@@ -44,6 +44,8 @@ const (
 	hotkeyWorktreeSetup    = "worktree_setup"
 	hotkeyWorktreeFinish   = "worktree_finish"
 	hotkeyCreateGroup      = "create_group"
+	hotkeyCollapseAll      = "collapse_all"
+	hotkeyExpandAll        = "expand_all"
 	hotkeySearch           = "search"
 	hotkeyHelp             = "help"
 	hotkeySettings         = "settings"
@@ -122,6 +124,8 @@ var hotkeyActionOrder = []string{
 	hotkeyWorktreeSetup,
 	hotkeyWorktreeFinish,
 	hotkeyCreateGroup,
+	hotkeyCollapseAll,
+	hotkeyExpandAll,
 	hotkeySearch,
 	hotkeyHelp,
 	hotkeySettings,
@@ -170,6 +174,13 @@ var defaultHotkeyBindings = map[string]string{
 	hotkeyWorktreeSetup:    "b",
 	hotkeyWorktreeFinish:   "W",
 	hotkeyCreateGroup:      "g",
+	// Fully collapse/expand the top-level folder containing the selection.
+	// Shift+Left/Right; Cmd+Shift+Left/Right folds the entire tree.
+	// (single-group collapse/expand). Shift+Tab also collapses all (free on the
+	// home list; dialogs still use it for "previous field" while a form is open).
+	// Option+Enter also expands all (bubbletea: alt+enter with Option-as-Meta).
+	hotkeyCollapseAll:      "shift+left",
+	hotkeyExpandAll:        "shift+right",
 	hotkeySearch:           "/",
 	hotkeyHelp:             "?",
 	hotkeySettings:         "S",

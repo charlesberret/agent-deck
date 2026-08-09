@@ -2752,12 +2752,8 @@ func (d *NewDialog) renderCommandSection(content *strings.Builder, cur focusTarg
 		} else {
 			displayName = displayCommandPreset(cmd)
 		}
-		// Prepend icon for custom tools.
-		if icon := session.GetToolIcon(cmd); cmd != "" && icon != "" {
-			if toolDef := session.GetToolDef(cmd); toolDef != nil && toolDef.Icon != "" {
-				displayName = icon + " " + displayName
-			}
-		}
+		// Text-only pills (no emoji/icons) — house preference; icons still
+		// appear on the main session list via ToolIcon if desired there.
 
 		var btnStyle lipgloss.Style
 		if i == d.commandCursor {

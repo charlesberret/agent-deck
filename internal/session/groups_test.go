@@ -255,6 +255,44 @@ func TestFlattenWithNestedGroupsCollapsed(t *testing.T) {
 	}
 }
 
+// TestFlattenGrandparentCollapseHidesExpandedChild locks the depth-2 leak:
+// collapsing active-projects while active-projects/tetrafold stays Expanded
+// must still hide active-projects/tetrafold/architect (and its sessions).
+// Immediate-parent-only checks previously left the seat folders visible.
+func TestFlattenGrandparentCollapseHidesExpandedChild(t *testing.T) {
+	tree := NewGroupTree([]*Instance{})
+
+	tree.CreateGroup("active-projects")
+	tree.CreateSubgroup("active-projects", "tetrafold")
+	tree.CreateSubgroup("active-projects/tetrafold", "architect")
+
+	tree.Groups["active-projects/tetrafold/architect"].Sessions = []*Instance{
+		{ID: "a1", Title: "architect", GroupPath: "active-projects/tetrafold/architect"},
+	}
+
+	// Expand mid and leaf; collapse only the root.
+	tree.ExpandGroup("active-projects/tetrafold")
+	tree.ExpandGroup("active-projects/tetrafold/architect")
+	tree.CollapseGroup("active-projects")
+
+	items := tree.Flatten()
+	for _, it := range items {
+		if it.Type == ItemTypeGroup && it.Path != "active-projects" {
+			t.Errorf("collapsed grandparent must hide %q; got path in flatten", it.Path)
+		}
+		if it.Type == ItemTypeSession {
+			t.Errorf("collapsed grandparent must hide sessions; got %v", it.Session)
+		}
+	}
+	if len(items) != 1 || items[0].Path != "active-projects" {
+		paths := make([]string, 0, len(items))
+		for _, it := range items {
+			paths = append(paths, it.Path)
+		}
+		t.Fatalf("want only [active-projects], got %v", paths)
+	}
+}
+
 // TestSubgroupSortingWithUnrelatedRoots verifies that subgroups stay with their
 // parent root and are not sorted between unrelated root groups.
 // This was a bug where "agent-deck/github-issues" would sort between "My Sessions"
@@ -2438,7 +2476,6 @@ func TestRenameTargetPath_MatchesRenameGroup(t *testing.T) {
 		}
 	}
 }
-
 // testArchivedAt is a fixed, non-zero archive timestamp for the reorder tests
 // below. The value never matters — only that IsArchived() reports true.
 var testArchivedAt = time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
@@ -2608,5 +2645,115 @@ func TestDemoteSession_FirstActiveAboveArchivedIsNoOp(t *testing.T) {
 
 	if a1.ParentSessionID != "" {
 		t.Errorf("a1.ParentSessionID after no-op demote = %q, want %q", a1.ParentSessionID, "")
+	}
+}
+
+func TestCollapseExpandAllGroups(t *testing.T) {
+	tree := NewGroupTree([]*Instance{})
+	tree.CreateGroup("a")
+	tree.CreateSubgroup("a", "b")
+	tree.CreateGroup("c")
+	tree.ExpandGroup("a")
+	tree.ExpandGroup("a/b")
+	tree.ExpandGroup("c")
+
+	tree.CollapseAllGroups()
+	for path, g := range tree.Groups {
+		if g.Expanded {
+			t.Errorf("%s still expanded after CollapseAllGroups", path)
+		}
+	}
+	if n := len(tree.Flatten()); n != 2 { // only roots a and c
+		// roots still visible when collapsed
+		paths := []string{}
+		for _, it := range tree.Flatten() {
+			paths = append(paths, it.Path)
+		}
+		if len(paths) != 2 {
+			t.Fatalf("after collapse all, want 2 root headers, got %v", paths)
+		}
+	}
+
+	tree.ExpandAllGroups()
+	for path, g := range tree.Groups {
+		if !g.Expanded {
+			t.Errorf("%s still collapsed after ExpandAllGroups", path)
+		}
+	}
+}
+
+func TestCollapseExpandDescendantsScoped(t *testing.T) {
+	tree := NewGroupTree([]*Instance{})
+	tree.CreateGroup("active-projects")
+	tree.CreateSubgroup("active-projects", "tetrafold")
+	tree.CreateSubgroup("active-projects/tetrafold", "architect")
+	tree.CreateSubgroup("active-projects", "kettle")
+	tree.ExpandAllGroups()
+
+	// Collapse only under tetrafold — kettle and active-projects stay expanded.
+	tree.CollapseDescendants("active-projects/tetrafold")
+	if !tree.Groups["active-projects"].Expanded {
+		t.Error("active-projects should stay expanded")
+	}
+	if !tree.Groups["active-projects/tetrafold"].Expanded {
+		// CollapseDescendants leaves parent alone; may still be expanded from ExpandAll
+	}
+	if tree.Groups["active-projects/tetrafold/architect"].Expanded {
+		t.Error("architect (descendant) should be collapsed")
+	}
+	if !tree.Groups["active-projects/kettle"].Expanded {
+		t.Error("kettle (sibling of tetrafold) should stay expanded")
+	}
+
+	tree.ExpandDescendants("active-projects/tetrafold")
+	if !tree.Groups["active-projects/tetrafold"].Expanded {
+		t.Error("tetrafold should be expanded")
+	}
+	if !tree.Groups["active-projects/tetrafold/architect"].Expanded {
+		t.Error("architect should be expanded")
+	}
+}
+
+// TestMoveGroupUpWithNestedChildren: siblings with descendants are not adjacent
+// in GroupList; MoveGroupUp must still swap them (issue: folder reorder no-op).
+func TestMoveGroupUpWithNestedChildren(t *testing.T) {
+	tree := NewGroupTree([]*Instance{})
+	tree.CreateGroup("active-projects")
+	tree.CreateSubgroup("active-projects", "kettle")
+	tree.CreateSubgroup("active-projects", "tetrafold")
+	tree.CreateSubgroup("active-projects/tetrafold", "architect")
+	tree.CreateSubgroup("active-projects", "incanter")
+
+	// Force sibling order: kettle, tetrafold, incanter
+	for _, g := range tree.GroupList {
+		switch g.Path {
+		case "active-projects/kettle":
+			g.Order = 0
+		case "active-projects/tetrafold":
+			g.Order = 1
+		case "active-projects/incanter":
+			g.Order = 2
+		}
+	}
+	tree.rebuildGroupList()
+
+	// Move incanter up past tetrafold (tetrafold has nested architect between them in GroupList)
+	tree.MoveGroupUp("active-projects/incanter")
+
+	var siblingOrder []string
+	for _, g := range tree.GroupList {
+		if getParentPath(g.Path) == "active-projects" {
+			siblingOrder = append(siblingOrder, g.Name)
+		}
+	}
+	// expect kettle, incanter, tetrafold
+	if len(siblingOrder) < 3 {
+		t.Fatalf("siblings: %v", siblingOrder)
+	}
+	want := []string{"kettle", "incanter", "tetrafold"}
+	for i := 0; i < 3; i++ {
+		if siblingOrder[i] != want[i] {
+			t.Fatalf("after MoveGroupUp incanter: got %v, want %v", siblingOrder, want)
+		}
 	}
 }

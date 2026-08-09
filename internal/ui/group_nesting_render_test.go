@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -136,5 +137,51 @@ func TestDuplicateRootHeadersReuseRootGroupNumber(t *testing.T) {
 		if n != nums[0] {
 			t.Fatalf("duplicate root headers must reuse root number, got %v", nums)
 		}
+	}
+}
+
+// TestGroupHotkeyVisibleWhenSelected ensures the jump digit ("N·") stays
+// visible on the cursor/highlight row. Previously renderGroupItem gated the
+// digit on !selected, so arrowing onto a numbered folder made the number vanish.
+func TestGroupHotkeyVisibleWhenSelected(t *testing.T) {
+	inst := session.NewInstanceWithTool("sess", "/tmp/alpha/proj", "claude")
+	inst.GroupPath = "alpha"
+	instances := []*session.Instance{inst}
+
+	groups := []*session.GroupData{
+		{Name: "alpha", Path: "alpha", Expanded: true, Order: 0},
+		{Name: "beta", Path: "beta", Expanded: true, Order: 1},
+	}
+
+	home := NewHome()
+	home.width = 120
+	home.height = 60
+	home.initialLoading = false
+	home.instancesMu.Lock()
+	home.instances = instances
+	home.instancesMu.Unlock()
+	home.groupTree = session.NewGroupTreeWithGroups(instances, groups)
+	home.groupViewMode = session.GroupViewNormal
+	home.rebuildFlatItems()
+
+	// Find the root group row that has a hotkey number.
+	cursor := -1
+	var wantNum int
+	for i, it := range home.flatItems {
+		if it.Type == session.ItemTypeGroup && it.Level == 0 && it.RootGroupNum >= 1 {
+			cursor = i
+			wantNum = it.RootGroupNum
+			break
+		}
+	}
+	if cursor < 0 {
+		t.Fatalf("no numbered root group in flatItems")
+	}
+	home.cursor = cursor
+
+	rendered := stripANSIForGroupNesting(home.renderSessionList(120, 60))
+	want := fmt.Sprintf("%d·", wantNum)
+	if !strings.Contains(rendered, want) {
+		t.Fatalf("selected root group should still show hotkey %q\n--- render ---\n%s", want, rendered)
 	}
 }

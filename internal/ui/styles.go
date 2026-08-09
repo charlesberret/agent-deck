@@ -260,9 +260,10 @@ var (
 	GroupStatusWaiting lipgloss.Style
 
 	// Group selected styles
-	GroupNameSelStyle   lipgloss.Style
-	GroupCountSelStyle  lipgloss.Style
-	GroupExpandSelStyle lipgloss.Style
+	GroupNameSelStyle    lipgloss.Style
+	GroupCountSelStyle   lipgloss.Style
+	GroupExpandSelStyle  lipgloss.Style
+	GroupHotkeySelStyle  lipgloss.Style
 )
 
 // ToolStyleCache provides pre-allocated styles for each tool type
@@ -515,6 +516,9 @@ func initStyles() {
 	GroupNameSelStyle = lipgloss.NewStyle().Bold(true).Foreground(ColorBg).Background(ColorAccent)
 	GroupCountSelStyle = lipgloss.NewStyle().Foreground(ColorBg).Background(ColorAccent)
 	GroupExpandSelStyle = lipgloss.NewStyle().Foreground(ColorBg).Background(ColorAccent)
+	// Match the accent highlight so the jump digit stays readable on the selected row
+	// (previously the digit was omitted entirely when selected).
+	GroupHotkeySelStyle = lipgloss.NewStyle().Bold(true).Foreground(ColorBg).Background(ColorAccent)
 
 	// ToolStyleCache - reinitialize with current theme colors
 	ToolStyleCache = map[string]lipgloss.Style{

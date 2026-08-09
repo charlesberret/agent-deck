@@ -623,6 +623,7 @@ func (t *GroupTree) ancestorsExpanded(path string, memo map[string]bool) bool {
 	return visible
 }
 
+
 // Flatten returns a flat list of items for cursor navigation
 func (t *GroupTree) Flatten() []Item {
 	items := []Item{}
@@ -820,40 +821,117 @@ func (t *GroupTree) CollapseGroup(path string) {
 	}
 }
 
-// MoveGroupUp moves a group up in the order (only within siblings at same level)
-func (t *GroupTree) MoveGroupUp(path string) {
-	parentPath := getParentPath(path)
+// CollapseAllGroups collapses every group in the tree.
+func (t *GroupTree) CollapseAllGroups() {
+	for path, group := range t.Groups {
+		group.Expanded = false
+		t.Expanded[path] = false
+	}
+}
 
-	for i, g := range t.GroupList {
-		if g.Path == path && i > 0 {
-			// Only swap if previous item is a sibling (same parent)
-			prevParent := getParentPath(t.GroupList[i-1].Path)
-			if prevParent == parentPath {
-				t.GroupList[i], t.GroupList[i-1] = t.GroupList[i-1], t.GroupList[i]
-				t.GroupList[i].Order = i
-				t.GroupList[i-1].Order = i - 1
-			}
-			break
+// ExpandAllGroups expands every group in the tree.
+func (t *GroupTree) ExpandAllGroups() {
+	for path, group := range t.Groups {
+		group.Expanded = true
+		t.Expanded[path] = true
+	}
+}
+
+// CollapseDescendants collapses every group strictly under parentPath
+// (paths with prefix parentPath+"/"). The parent itself is left unchanged
+// so the folder stays visible with children folded.
+func (t *GroupTree) CollapseDescendants(parentPath string) {
+	if parentPath == "" {
+		return
+	}
+	prefix := parentPath + "/"
+	for path, group := range t.Groups {
+		if strings.HasPrefix(path, prefix) {
+			group.Expanded = false
+			t.Expanded[path] = false
 		}
 	}
 }
 
-// MoveGroupDown moves a group down in the order (only within siblings at same level)
-func (t *GroupTree) MoveGroupDown(path string) {
-	parentPath := getParentPath(path)
+// ExpandDescendants expands parentPath and every group under it so the
+// subtree is fully open and visible.
+func (t *GroupTree) ExpandDescendants(parentPath string) {
+	if parentPath == "" {
+		return
+	}
+	if group, exists := t.Groups[parentPath]; exists {
+		group.Expanded = true
+		t.Expanded[parentPath] = true
+	}
+	prefix := parentPath + "/"
+	for path, group := range t.Groups {
+		if strings.HasPrefix(path, prefix) {
+			group.Expanded = true
+			t.Expanded[path] = true
+		}
+	}
+}
 
-	for i, g := range t.GroupList {
-		if g.Path == path && i < len(t.GroupList)-1 {
-			// Only swap if next item is a sibling (same parent)
-			nextParent := getParentPath(t.GroupList[i+1].Path)
-			if nextParent == parentPath {
-				t.GroupList[i], t.GroupList[i+1] = t.GroupList[i+1], t.GroupList[i]
-				t.GroupList[i].Order = i
-				t.GroupList[i+1].Order = i + 1
-			}
+// siblingGroups returns groups that share parentPath, in current GroupList order.
+func (t *GroupTree) siblingGroups(parentPath string) []*Group {
+	var siblings []*Group
+	for _, g := range t.GroupList {
+		if getParentPath(g.Path) == parentPath {
+			siblings = append(siblings, g)
+		}
+	}
+	return siblings
+}
+
+// renumberSiblings assigns contiguous Order values 0..n-1 to siblings so
+// rebuildGroupList sorts them by that sequence among the same parent.
+func renumberSiblings(siblings []*Group) {
+	for i, g := range siblings {
+		g.Order = i
+	}
+}
+
+// MoveGroupUp moves a group up among its siblings (same parent path).
+// Earlier versions only swapped with GroupList[i-1], which fails when the
+// previous list entry is a *descendant* of the previous sibling (nested
+// children sit between sibling headers in the flat GroupList). Walk siblings
+// explicitly, swap, renumber, and rebuild.
+func (t *GroupTree) MoveGroupUp(path string) {
+	parentPath := getParentPath(path)
+	siblings := t.siblingGroups(parentPath)
+	idx := -1
+	for i, g := range siblings {
+		if g.Path == path {
+			idx = i
 			break
 		}
 	}
+	if idx <= 0 {
+		return
+	}
+	siblings[idx-1], siblings[idx] = siblings[idx], siblings[idx-1]
+	renumberSiblings(siblings)
+	t.rebuildGroupList()
+}
+
+// MoveGroupDown moves a group down among its siblings (same parent path).
+// See MoveGroupUp for why sibling walk is required instead of adjacent swap.
+func (t *GroupTree) MoveGroupDown(path string) {
+	parentPath := getParentPath(path)
+	siblings := t.siblingGroups(parentPath)
+	idx := -1
+	for i, g := range siblings {
+		if g.Path == path {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 || idx >= len(siblings)-1 {
+		return
+	}
+	siblings[idx], siblings[idx+1] = siblings[idx+1], siblings[idx]
+	renumberSiblings(siblings)
+	t.rebuildGroupList()
 }
 
 // MoveSessionUp moves a session up among its visual siblings: top-level

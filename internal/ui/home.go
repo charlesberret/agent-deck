@@ -1135,6 +1135,156 @@ func (h *Home) openShellHere(inst *session.Instance) tea.Cmd {
 	return h.attachSession(inst)
 }
 
+// selectedScopePath returns the group path for the current cursor row.
+// Group rows use their path; session (and window) rows use the session's group
+// so a peer file at the same level gets the same scope as the folder.
+func (h *Home) selectedScopePath() string {
+	if h.cursor < 0 || h.cursor >= len(h.flatItems) {
+		return ""
+	}
+	item := h.flatItems[h.cursor]
+	switch item.Type {
+	case session.ItemTypeGroup, session.ItemTypeRemoteGroup:
+		return item.Path
+	case session.ItemTypeSession:
+		if item.Session != nil && item.Session.GroupPath != "" {
+			return item.Session.GroupPath
+		}
+		return item.Path
+	case session.ItemTypeWindow:
+		if item.WindowSessionID != "" && h.groupTree != nil {
+			// Prefer the owning session's group if we can find it.
+			for _, g := range h.groupTree.Groups {
+				for _, s := range g.Sessions {
+					if s != nil && s.ID == item.WindowSessionID && s.GroupPath != "" {
+						return s.GroupPath
+					}
+				}
+			}
+		}
+		return item.Path
+	case session.ItemTypeRemoteSession:
+		if item.RemoteSession != nil && item.RemoteSession.Group != "" {
+			// Remote group paths are nested under remotes/<name>/...
+			if item.RemoteName != "" {
+				return "remotes/" + item.RemoteName + "/" + item.RemoteSession.Group
+			}
+			return item.RemoteSession.Group
+		}
+		return item.Path
+	default:
+		return ""
+	}
+}
+
+// topLevelGroupPath resolves a group path to the top-level folder that
+// contains it — the unit Shift+Left/Right fully expand or collapse.
+//
+//	household-agents/clerk     → household-agents
+//	remotes/hesiod/grades/x    → remotes/hesiod
+//	grades                     → grades
+func topLevelGroupPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	// Remote host folders: remotes/<host>/... → remotes/<host>
+	if strings.HasPrefix(path, "remotes/") {
+		rest := strings.TrimPrefix(path, "remotes/")
+		if i := strings.Index(rest, "/"); i >= 0 {
+			return "remotes/" + rest[:i]
+		}
+		return path // already remotes/<host>
+	}
+	if i := strings.Index(path, "/"); i >= 0 {
+		return path[:i]
+	}
+	return path
+}
+
+// collapseAllGroups fully collapses the top-level folder that contains the
+// selection (and every nested group under it). Other top-level folders are
+// left alone. (Shift+Left)
+func (h *Home) collapseAllGroups() {
+	if h.groupTree == nil {
+		return
+	}
+	scope := topLevelGroupPath(h.selectedScopePath())
+	if scope == "" {
+		return
+	}
+	h.groupTree.CollapseDescendants(scope)
+	// Fully close the top-level folder itself (not just its descendants).
+	h.groupTree.CollapseGroup(scope)
+	h.rebuildFlatItems()
+	// Prefer keeping the cursor on the top-level group header when possible.
+	h.moveCursorToGroup(scope)
+	if h.cursor >= len(h.flatItems) {
+		h.cursor = max(0, len(h.flatItems)-1)
+	}
+	h.saveGroupState()
+	h.maintenanceMsg = "Collapsed " + scopeLeafName(scope)
+}
+
+// expandAllGroups fully expands the top-level folder that contains the
+// selection (and every nested group under it). Other top-level folders are
+// left alone. (Shift+Right)
+func (h *Home) expandAllGroups() {
+	if h.groupTree == nil {
+		return
+	}
+	scope := topLevelGroupPath(h.selectedScopePath())
+	if scope == "" {
+		return
+	}
+	h.groupTree.ExpandDescendants(scope)
+	h.rebuildFlatItems()
+	h.moveCursorToGroup(scope)
+	if h.cursor >= len(h.flatItems) {
+		h.cursor = max(0, len(h.flatItems)-1)
+	}
+	h.saveGroupState()
+	h.maintenanceMsg = "Expanded " + scopeLeafName(scope)
+}
+
+// collapseEntireTree folds every group in the deck (Cmd+Shift+Left).
+func (h *Home) collapseEntireTree() {
+	if h.groupTree == nil {
+		return
+	}
+	h.groupTree.CollapseAllGroups()
+	h.rebuildFlatItems()
+	if h.cursor >= len(h.flatItems) {
+		h.cursor = max(0, len(h.flatItems)-1)
+	}
+	h.saveGroupState()
+	h.maintenanceMsg = "All groups collapsed"
+}
+
+// expandEntireTree opens every group in the deck (Cmd+Shift+Right).
+func (h *Home) expandEntireTree() {
+	if h.groupTree == nil {
+		return
+	}
+	h.groupTree.ExpandAllGroups()
+	h.rebuildFlatItems()
+	if h.cursor >= len(h.flatItems) {
+		h.cursor = max(0, len(h.flatItems)-1)
+	}
+	h.saveGroupState()
+	h.maintenanceMsg = "All groups expanded"
+}
+
+// scopeLeafName is the last path segment of a group path (for status banners).
+func scopeLeafName(path string) string {
+	if path == "" {
+		return path
+	}
+	if i := strings.LastIndex(path, "/"); i >= 0 {
+		return path[i+1:]
+	}
+	return path
+}
+
 // collapseOrNavUp implements the "h"/"left" collapse-or-parent navigation:
 // collapses an open group/session-windows, or moves the cursor to the parent
 // group of the focused item. Issue #1470.
@@ -10667,6 +10817,16 @@ func (h *Home) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		h.collapseOrNavUp()
 		return h, nil
 
+	case "shift+tab", "shift-tab", "backtab", "btab":
+		// Collapse every group (Shift+Tab is free on the home list).
+		h.collapseAllGroups()
+		return h, nil
+
+	case "alt+enter":
+		// Expand every group (Option+Enter with Option-as-Meta).
+		h.expandAllGroups()
+		return h, nil
+
 	case "shift+up", "ctrl+up", "+", "K":
 		// Move item up
 		if h.cursor < len(h.flatItems) {
@@ -10738,42 +10898,26 @@ func (h *Home) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return h, nil
 
 	case "shift+left":
-		// Promote: outdent a sub-session to top-level peer in the same group.
-		// Top-level sessions and groups are unaffected. Cross-group moves
-		// stay on M.
-		if h.cursor < len(h.flatItems) {
-			item := h.flatItems[h.cursor]
-			if item.Type == session.ItemTypeSession && item.Session != nil {
-				sessionID := item.Session.ID
-				h.groupTree.PromoteSession(item.Session)
-				h.rebuildFlatItems()
-				h.moveCursorToSession(sessionID)
-				if h.cursor >= len(h.flatItems) {
-					h.cursor = max(0, len(h.flatItems)-1)
-				}
-				h.saveInstances()
-			}
-		}
+		// Collapse all folders under the selection's scope (group path of the
+		// highlighted folder or of the highlighted session's parent group).
+		// Promote/outdent was previously on this key; use M for cross-group moves.
+		h.collapseAllGroups()
 		return h, nil
 
 	case "shift+right":
-		// Demote: nest the cursor's top-level session under the previous
-		// top-level peer as that peer's last child. No-op when already a
-		// sub-session, when the session has its own children (single-level
-		// nesting only), or when there is no previous peer in the group.
-		if h.cursor < len(h.flatItems) {
-			item := h.flatItems[h.cursor]
-			if item.Type == session.ItemTypeSession && item.Session != nil {
-				sessionID := item.Session.ID
-				h.groupTree.DemoteSession(item.Session)
-				h.rebuildFlatItems()
-				h.moveCursorToSession(sessionID)
-				if h.cursor >= len(h.flatItems) {
-					h.cursor = max(0, len(h.flatItems)-1)
-				}
-				h.saveInstances()
-			}
-		}
+		// Expand all folders under the selection's scope (group or peer session).
+		h.expandAllGroups()
+		return h, nil
+
+	// Global tree fold/unfold. Terminals disagree on the Cmd modifier label:
+	// bubbletea's CSI types use ctrl+shift+{left,right}; Ghosty/Kitty often
+	// report super+… or cmd+…. Accept all three.
+	case "cmd+shift+left", "super+shift+left", "ctrl+shift+left":
+		h.collapseEntireTree()
+		return h, nil
+
+	case "cmd+shift+right", "super+shift+right", "ctrl+shift+right":
+		h.expandEntireTree()
 		return h, nil
 
 	case ",":
@@ -19130,9 +19274,16 @@ func (h *Home) renderGroupItem(
 	// holds the root group's hotkey number ("N·") when present; otherwise blanks.
 	// Keeping it a constant width means the number no longer eats a level of
 	// indentation, so a numbered root and its children stay properly nested.
+	// Always show the digit when present — including on the selected row — so
+	// jump keys stay discoverable under the cursor highlight.
 	gutter := strings.Repeat(" ", leftGutterWidth)
-	if item.Level == 0 && !selected && item.RootGroupNum >= 1 && item.RootGroupNum <= 9 {
-		gutter = GroupHotkeyStyle.Render(fmt.Sprintf("%d·", item.RootGroupNum))
+	if item.Level == 0 && item.RootGroupNum >= 1 && item.RootGroupNum <= 9 {
+		label := fmt.Sprintf("%d·", item.RootGroupNum)
+		if selected {
+			gutter = GroupHotkeySelStyle.Render(label)
+		} else {
+			gutter = GroupHotkeyStyle.Render(label)
+		}
 	}
 
 	// Calculate indentation based on nesting level (no tree lines, just spaces).
