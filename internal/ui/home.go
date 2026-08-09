@@ -10898,14 +10898,15 @@ func (h *Home) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return h, nil
 
 	case "shift+left":
-		// Collapse all folders under the selection's scope (group path of the
-		// highlighted folder or of the highlighted session's parent group).
+		// Fully collapse the top-level folder containing the cursor (and all
+		// nested groups under it). Other top-level folders are untouched.
 		// Promote/outdent was previously on this key; use M for cross-group moves.
 		h.collapseAllGroups()
 		return h, nil
 
 	case "shift+right":
-		// Expand all folders under the selection's scope (group or peer session).
+		// Fully expand the top-level folder containing the cursor (and every
+		// nested group under it). Does not expand the rest of the tree.
 		h.expandAllGroups()
 		return h, nil
 
