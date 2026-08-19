@@ -1,15 +1,15 @@
 // Issue #1103 — Remote session latency markers (render layer).
 //
-// Reporter: @ddorman-dn — `remotes/<name> — <Xms>` in TUI header with color
-// thresholds (green <50, yellow 50-200, red >200). This file pins the
-// render-side invariants:
+// Reporter: @ddorman-dn — `remotes/<name> — <Xms>` in TUI header.
+// House styling uses soft gray/pastel (no traffic-light reds). This file
+// pins the render-side invariants:
 //
 //   - renderRemoteGroupItem appends ` — Xms` after the count for connected
 //     remotes that have been measured.
-//   - Color matches the threshold band.
+//   - Marker uses the muted latency palette for every ms value.
 //   - An unmeasured remote (zero-valued RemoteLatency) renders NO marker,
 //     so the header doesn't jitter on first paint.
-//   - Offline (measurement failed) renders ` — offline` in red.
+//   - Offline (measurement failed) renders ` — offline` in the quiet offline gray.
 
 package ui
 
@@ -49,29 +49,17 @@ func TestIssue1103_Header_ShowsLatencyMs_ForConnectedRemote(t *testing.T) {
 	}
 }
 
-func TestIssue1103_Header_ColorByThreshold(t *testing.T) {
+func TestIssue1103_Header_MutedLatencyPalette(t *testing.T) {
 	forceTrueColorProfile()
 
-	cases := []struct {
-		name      string
-		ms        int
-		wantColor string // lipgloss.Color value used in render
-	}{
-		{"green under 50ms", 12, "2"},
-		{"green just under 50ms", 49, "2"},
-		{"yellow at 50ms", 50, "3"},
-		{"yellow at 200ms", 200, "3"},
-		{"red over 200ms", 201, "1"},
-		{"red way over", 800, "1"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	// Every ms band uses the same soft slate — no red/green/yellow.
+	for _, ms := range []int{12, 49, 50, 200, 201, 800} {
+		t.Run(itoa(ms)+"ms", func(t *testing.T) {
 			home := NewHome()
 			home.width = 100
 			home.height = 30
 			home.remoteLatency["dev"] = session.RemoteLatency{
-				MS:         tc.ms,
+				MS:         ms,
 				MeasuredAt: time.Now(),
 			}
 			item := session.Item{
@@ -82,15 +70,22 @@ func TestIssue1103_Header_ColorByThreshold(t *testing.T) {
 			home.renderRemoteGroupItem(&b, item, false)
 			got := b.String()
 
-			// Build the expected styled fragment with the same lipgloss style
-			// the renderer uses, so the assertion is robust to terminfo.
-			wantText := " — " + itoa(tc.ms) + "ms"
+			wantText := " — " + itoa(ms) + "ms"
 			wantFragment := lipgloss.NewStyle().
-				Foreground(lipgloss.Color(tc.wantColor)).
+				Foreground(remoteLatencyColor).
 				Render(wantText)
 
 			if !strings.Contains(got, wantFragment) {
-				t.Fatalf("ms=%d must render colored fragment %q; got %q", tc.ms, wantFragment, got)
+				t.Fatalf("ms=%d must render muted fragment %q; got %q", ms, wantFragment, got)
+			}
+			// Guard against traffic-light regression.
+			for _, loud := range []string{"1", "2", "3"} {
+				loudFrag := lipgloss.NewStyle().
+					Foreground(lipgloss.Color(loud)).
+					Render(wantText)
+				if strings.Contains(got, loudFrag) {
+					t.Fatalf("ms=%d still uses loud ANSI color %s", ms, loud)
+				}
 			}
 		})
 	}

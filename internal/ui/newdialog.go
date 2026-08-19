@@ -368,16 +368,12 @@ func displayCommandPreset(cmd string) string {
 // buildPresetCommands returns the list of commands for the picker,
 // including any custom tools from config.toml.
 //
-// When show_only_installed_tools is on (issue #1259) the list is filtered down
-// to tools whose command resolves on PATH; "" (shell) is always kept. With the
-// flag off FilterVisibleToolNames is a no-op, so the list is byte-identical to
-// before.
+// Order is house preference (avicenna): claude/grok/agy/gemini/codex → local
+// ornith/penlight → oll grades → wk-* → rarely-used → shell last.
+// See session.BuildPickerPresets / [ui].hidden_tools for denylist (duplicates
+// like antigravity, local-ornith). show_only_installed_tools still applies.
 func buildPresetCommands() []string {
-	presets := []string{"", "claude", "gemini", "opencode", "codex", "pi", "copilot", "crush", "cursor", "hermes", "deepseek"}
-	if customTools := session.GetCustomToolNames(); len(customTools) > 0 {
-		presets = append(presets, customTools...)
-	}
-	return session.FilterVisibleToolNames(presets)
+	return session.BuildPickerPresets()
 }
 
 // RefreshPresetCommands rebuilds the tool picker after config changes.
@@ -613,21 +609,24 @@ func (d *NewDialog) ShowInGroup(groupPath, groupName, defaultPath string, conduc
 // SetDefaultTool sets the pre-selected command based on tool name
 // Call this before Show/ShowInGroup to apply user's preferred default
 func (d *NewDialog) SetDefaultTool(tool string) {
-	if tool == "" {
-		d.commandCursor = 0 // Default to shell
-		return
-	}
-
-	// Find the tool in preset commands
+	// Find the tool in preset commands ("" = shell; house order puts shell last).
+	want := tool
 	for i, cmd := range d.presetCommands {
-		if cmd == tool {
+		if cmd == want {
 			d.commandCursor = i
 			d.updateToolOptions()
 			return
 		}
 	}
 
-	// Tool not found in presets, default to shell
+	// Tool not found — fall back to shell if present, else first preset.
+	for i, cmd := range d.presetCommands {
+		if cmd == "" {
+			d.commandCursor = i
+			d.updateToolOptions()
+			return
+		}
+	}
 	d.commandCursor = 0
 	d.updateToolOptions()
 }
@@ -1806,6 +1805,37 @@ func (d *NewDialog) rebuildFocusTargets() {
 	}
 }
 
+// toolOptionsSectionTitle returns the short label for the tool-options block
+// (collapsed row and section identity). Empty when no panel is active.
+func (d *NewDialog) toolOptionsSectionTitle() string {
+	cmd := d.GetSelectedCommand()
+	switch {
+	case session.IsClaudeCompatible(cmd):
+		return "Claude Options"
+	case cmd == "gemini":
+		return "Gemini Options"
+	case cmd == "codex":
+		return "Codex Options"
+	case cmd == "hermes":
+		return "Hermes Options"
+	default:
+		if cmd == "" {
+			return "Tool Options"
+		}
+		return strings.ToUpper(cmd[:1]) + cmd[1:] + " Options"
+	}
+}
+
+// renderCollapsedToolOptions is a one-line stand-in for the full tool-options
+// panel. Keeps the dialog height stable while the user is on Name/Tool/Path;
+// the full panel expands only when focus lands on focusOptions.
+func (d *NewDialog) renderCollapsedToolOptions() string {
+	title := d.toolOptionsSectionTitle()
+	dim := lipgloss.NewStyle().Foreground(ColorComment)
+	// ▸ = collapsed (expand by arrowing onto this section)
+	return dim.Render("  ▸ "+title+"  (↓ expand)") + "\n"
+}
+
 // updateToolOptions sets d.toolOptions to the panel matching the current tool selection.
 func (d *NewDialog) updateToolOptions() {
 	cmd := d.GetSelectedCommand()
@@ -2732,7 +2762,7 @@ func (d *NewDialog) renderRemoteMCPRow(focused bool) string {
 	return b.String()
 }
 
-func (d *NewDialog) renderCommandSection(content *strings.Builder, cur focusTarget) {
+func (d *NewDialog) renderCommandSection(content *strings.Builder, cur focusTarget, dialogWidth int) {
 	labelStyle := lipgloss.NewStyle().Foreground(ColorText)
 	activeLabelStyle := lipgloss.NewStyle().Foreground(ColorCyan).Bold(true)
 
@@ -2743,7 +2773,8 @@ func (d *NewDialog) renderCommandSection(content *strings.Builder, cur focusTarg
 	}
 	content.WriteString("\n  ")
 
-	// Render command options as consistent pill buttons.
+	// Render command options as consistent pill buttons, wrapped at pill
+	// boundaries so dialog Width reflow never splits a tool name mid-entry.
 	var cmdButtons []string
 	for i, cmd := range d.presetCommands {
 		displayName := cmd
@@ -2752,26 +2783,30 @@ func (d *NewDialog) renderCommandSection(content *strings.Builder, cur focusTarg
 		} else {
 			displayName = displayCommandPreset(cmd)
 		}
-		// Text-only pills (no emoji/icons) — house preference; icons still
-		// appear on the main session list via ToolIcon if desired there.
+		// Prefix brand icon so the tool picker is scannable (clusters: oll-*, wk-*, local-*)
+		icon := ToolIcon(displayName)
+		if cmd == "" {
+			icon = ToolIcon("shell")
+		}
+		label := icon + " " + displayName
 
 		var btnStyle lipgloss.Style
 		if i == d.commandCursor {
 			btnStyle = lipgloss.NewStyle().
 				Foreground(ColorBg).
-				Background(ColorAccent).
+				Background(ToolColor(displayName)).
 				Bold(true).
-				Padding(0, 2)
+				Padding(0, 1)
 		} else {
 			btnStyle = lipgloss.NewStyle().
-				Foreground(ColorTextDim).
+				Foreground(ToolColor(displayName)).
 				Background(ColorSurface).
-				Padding(0, 2)
+				Padding(0, 1)
 		}
 
-		cmdButtons = append(cmdButtons, btnStyle.Render(displayName))
+		cmdButtons = append(cmdButtons, btnStyle.Render(label))
 	}
-	content.WriteString(lipgloss.JoinHorizontal(lipgloss.Left, cmdButtons...))
+	content.WriteString(joinPillsFlow(cmdButtons, pillsInnerWidth(dialogWidth)))
 	content.WriteString("\n")
 
 	// show_only_installed_tools empty-fallback hint (issue #1259).
@@ -3092,7 +3127,7 @@ func (d *NewDialog) View() string {
 	// (see renderMultiRepoSection, called after the Branch input). In multi-repo
 	// mode the single Path field is hidden — its list renders below the fold.
 	markFocusedRow(focusCommand)
-	d.renderCommandSection(&content, cur)
+	d.renderCommandSection(&content, cur, dialogWidth)
 	markFocusedRow(focusModel)
 	d.renderModelSection(&content, cur, dialogWidth)
 	markFocusedRow(focusReasoningEffort)
@@ -3229,14 +3264,17 @@ func (d *NewDialog) View() string {
 	markFocusedRow(focusMultiRepo)
 	d.renderMultiRepoSection(&content, cur)
 
-	// Tool options panel
+	// Tool options panel — collapsed to one line until focus lands on it,
+	// so ←/→ through tools does not jolt dialog height (Claude options etc.).
 	if d.toolOptions != nil {
 		content.WriteString("\n")
 		panelStart := strings.Count(content.String(), "\n")
 		if cur == focusOptions {
 			focusLogicalLine = panelStart + d.toolOptions.FocusedLine()
+			content.WriteString(d.toolOptions.View())
+		} else {
+			content.WriteString(d.renderCollapsedToolOptions())
 		}
-		content.WriteString(d.toolOptions.View())
 	}
 
 	// Inline validation error

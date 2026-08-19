@@ -68,6 +68,11 @@ const (
 	StatusError    Status = "error"
 	StatusStarting Status = "starting" // Session is being created (tmux initializing)
 	StatusStopped  Status = "stopped"  // Session intentionally stopped by user (not crashed)
+	// StatusNeverStarted: seat exists in the registry but Start() has never
+	// succeeded (LastStartedAt zero). Distinct from StatusIdle (was live, now
+	// at rest) and StatusError (started then failed). Stored as "never_started".
+	// House default for bulk-normalized unstarted seats (local/avicenna).
+	StatusNeverStarted Status = "never_started"
 	// StatusQueued: session is waiting for group capacity. v1.9.1 introduces
 	// group max_concurrent caps; a launch into a group at cap stores the
 	// instance with this status and starts it once a running session ends.
@@ -5575,21 +5580,41 @@ func (i *Instance) shellForegroundRunning() bool {
 	return true
 }
 
-// neverStarted reports whether this session was added but never started, so an
-// absent tmux session is expected rather than a fault. Two conditions must both
-// hold (caller holds i.mu):
+// NormalizeNeverStartedStatus promotes DB-default StatusError seats that have
+// never successfully started (LastStartedAt zero) to StatusNeverStarted.
+// Call after load from storage so the sea of schema-default "error" rows
+// does not reappear as red ✕ on every TUI boot. Safe no-op for real failures
+// (those have a non-zero LastStartedAt).
+func (i *Instance) NormalizeNeverStartedStatus() {
+	if i == nil {
+		return
+	}
+	if i.Status == StatusError && i.LastStartedAt.IsZero() {
+		i.Status = StatusNeverStarted
+	}
+}
+
+// neverStarted reports whether this session was added but never successfully
+// started, so an absent tmux session is expected rather than a fault.
+// Caller holds i.mu.
 //
-//  1. The instance was added in THIS process (addedThisProcess), not reloaded
-//     from storage. A reloaded session whose tmux later dies is a genuine error
-//     (instance_cli_parity_test.go TestUpdateStatus_CLIvsTUIParity_Error builds
-//     a reloaded struct literal, so addedThisProcess is false there).
-//  2. Start() was never called (lastStartTime is zero). A started-then-killed
-//     session has a non-zero lastStartTime and must surface as error
-//     (lifecycle_regression_test.go phase5).
-//  3. The status is still the pristine post-add state (idle or starting).
+// Durable signal: LastStartedAt (persisted, issue #1704). Process-local
+// lastStartTime also counts if Start() ran this process but has not yet
+// been written through. Live statuses (running/waiting) never count as
+// never-started even if timestamps are missing (race).
+//
+// A started-then-killed session has non-zero LastStartedAt and/or
+// lastStartTime and must surface as error (lifecycle_regression_test.go phase5).
 func (i *Instance) neverStarted() bool {
-	return i.addedThisProcess && i.lastStartTime.IsZero() &&
-		(i.Status == StatusIdle || i.Status == StatusStarting)
+	if !i.LastStartedAt.IsZero() || !i.lastStartTime.IsZero() {
+		return false
+	}
+	switch i.Status {
+	case StatusRunning, StatusWaiting:
+		return false
+	default:
+		return true
+	}
 }
 
 // UpdateStatus updates the session status by checking tmux.
@@ -5811,8 +5836,9 @@ func (i *Instance) UpdateStatus() error {
 	if i.tmuxSession == nil {
 		if i.neverStarted() {
 			// A session that was added but never started has no tmux yet; it is
-			// not an error, just not-yet-running. Keep it idle (✕ → ○).
-			i.Status = StatusIdle
+			// not an error, just not-yet-running. Prefer never_started over idle
+			// (idle means was live and is now at rest).
+			i.Status = StatusNeverStarted
 		} else if i.Status != StatusStopped {
 			i.Status = i.terminatedPaneStatus()
 			// Was this death a credential failure? If so the status stays error
@@ -5823,20 +5849,25 @@ func (i *Instance) UpdateStatus() error {
 		return nil
 	}
 
-	// Optimization: Skip expensive Exists() check for sessions already in error/stopped status
-	// Ghost sessions (in JSON but not in tmux) only get rechecked every 30 seconds
-	// This reduces subprocess spawns from 74/sec to ~5/sec for 28 ghost sessions
-	if (i.Status == StatusError || i.Status == StatusStopped) && !i.lastErrorCheck.IsZero() &&
+	// Optimization: Skip expensive Exists() check for sessions already in
+	// error/stopped/never_started. Ghost sessions only recheck every 30s.
+	// never_started seats have no tmux by design — rechecking them is pure noise.
+	if (i.Status == StatusError || i.Status == StatusStopped || i.Status == StatusNeverStarted) &&
+		!i.lastErrorCheck.IsZero() &&
 		time.Since(i.lastErrorCheck) < errorRecheckInterval {
-		return nil // Skip - still in error/stopped, checked recently
+		return nil
+	}
+	if i.Status == StatusNeverStarted && i.neverStarted() {
+		// Stable dormant seat — no tmux, no recheck thrash.
+		return nil
 	}
 
 	// Check if tmux session exists
 	if !i.tmuxSession.Exists() {
 		if i.neverStarted() {
 			// Added but never started: no tmux session was ever created, so an
-			// absent tmux is expected — classify as idle, not error (✕ → ○).
-			i.Status = StatusIdle
+			// absent tmux is expected — never_started, not error or idle.
+			i.Status = StatusNeverStarted
 		} else {
 			// tmux session is non-nil here, so the exit-status probe can block;
 			// applyTerminatedPaneStatus drops i.mu for the query and keeps the

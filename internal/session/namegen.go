@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -85,6 +87,77 @@ func GenerateUniqueSessionName(instances []*Instance, groupPath string) string {
 	// Fallback: append timestamp to guarantee uniqueness
 	name := GenerateSessionName()
 	return fmt.Sprintf("%s-%d", name, time.Now().Unix())
+}
+
+// generatedNameSets is built once from the adjective/noun lists so
+// LooksLikeGeneratedSessionName is a pair of map lookups.
+var generatedNameSets struct {
+	once       sync.Once
+	adjectives map[string]bool
+	nouns      map[string]bool
+}
+
+func initGeneratedNameSets() {
+	generatedNameSets.once.Do(func() {
+		generatedNameSets.adjectives = make(map[string]bool, len(adjectives))
+		for _, a := range adjectives {
+			generatedNameSets.adjectives[a] = true
+		}
+		generatedNameSets.nouns = make(map[string]bool, len(nouns))
+		for _, n := range nouns {
+			generatedNameSets.nouns[n] = true
+		}
+	})
+}
+
+// LooksLikeGeneratedSessionName reports whether title is an adjective-noun
+// handle from GenerateSessionName (or its timestamp-suffixed uniqueness
+// fallback). Used to mark leftover unnamed seats that predate the AutoName flag.
+func LooksLikeGeneratedSessionName(title string) bool {
+	t := strings.TrimSpace(strings.ToLower(title))
+	if t == "" {
+		return false
+	}
+	initGeneratedNameSets()
+	parts := strings.Split(t, "-")
+	if len(parts) < 2 {
+		return false
+	}
+	adj, noun := parts[0], parts[1]
+	if !generatedNameSets.adjectives[adj] || !generatedNameSets.nouns[noun] {
+		return false
+	}
+	// Bare "misty-owl" or uniqueness fallback "misty-owl-1718000000".
+	if len(parts) == 2 {
+		return true
+	}
+	if len(parts) == 3 {
+		for _, r := range parts[2] {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+		return len(parts[2]) > 0
+	}
+	return false
+}
+
+// IsContinuityUnnamed is true when the session has no explicit name that
+// agent-deck can treat as a stable continuity handle.
+//
+// AutoName sessions are unnamed by construction (quick-create / TUI-Q).
+// A still-generated adjective-noun title that was never title-locked is
+// treated the same, so pre-AutoName seats get the marker too. An explicit
+// rename (TUI `r`, create dialog, `-t`, or Claude `/rename` which clears
+// AutoName) drops the marker.
+func IsContinuityUnnamed(autoName, titleLocked bool, title string) bool {
+	if autoName {
+		return true
+	}
+	if titleLocked {
+		return false
+	}
+	return LooksLikeGeneratedSessionName(title)
 }
 
 // cryptoRandInt returns a cryptographically random int in [0, max).

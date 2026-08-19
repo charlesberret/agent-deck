@@ -246,7 +246,12 @@ func (s *SessionSwitcher) View() string {
 		}
 		tool := ""
 		if inst.Tool != "" {
-			tool = fmt.Sprintf(" (%s)", inst.Tool)
+			// Brand icon only — matches overview row parsimony (no " (grok)").
+			if icon := ToolIcon(inst.Tool); icon != "" {
+				tool = " " + icon
+			} else {
+				tool = fmt.Sprintf(" (%s)", inst.Tool)
+			}
 		}
 		title := label + tool
 

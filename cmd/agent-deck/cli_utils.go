@@ -863,6 +863,8 @@ func StatusSymbol(status session.Status) string {
 		return "✕"
 	case session.StatusStopped:
 		return "■"
+	case session.StatusNeverStarted:
+		return "·"
 	default:
 		return "?"
 	}
@@ -883,6 +885,8 @@ func StatusString(status session.Status) string {
 		return "stopped"
 	case session.StatusQueued:
 		return "queued"
+	case session.StatusNeverStarted:
+		return "never_started"
 	default:
 		return "unknown"
 	}

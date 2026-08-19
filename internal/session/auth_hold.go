@@ -262,7 +262,7 @@ func (r *AuthHoldRecord) FormatForDisplay() string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("🔒 authentication required\n")
+	b.WriteString("⚿ authentication required\n")
 	switch r.Reason {
 	case AuthHoldReasonDeath:
 		b.WriteString("The agent exited on an authentication failure (401 / invalid credentials).\n")

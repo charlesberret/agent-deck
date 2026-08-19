@@ -858,7 +858,7 @@ func restartAllSessions(out *CLIOutput, storage *session.Storage, instances []*s
 	}
 
 	if sweepResult.TripMessage != "" && !out.jsonMode {
-		fmt.Fprintf(os.Stderr, "\n🔒 %s\n", sweepResult.TripMessage)
+		fmt.Fprintf(os.Stderr, "\n⚿ %s\n", sweepResult.TripMessage)
 	}
 
 	if out.jsonMode {

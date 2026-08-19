@@ -81,6 +81,46 @@ func TestGenerateUniqueSessionName_EmptyInstances(t *testing.T) {
 	}
 }
 
+func TestLooksLikeGeneratedSessionName(t *testing.T) {
+	cases := []struct {
+		title string
+		want  bool
+	}{
+		{"misty-owl", true},
+		{"Misty-Owl", true},
+		{"swift-fox", true},
+		{"calm-brook-1718000000", true},
+		{"clerk", false},
+		{"alchemist", false},
+		{"kettle-core", false},
+		{"misty-owl-extra", false},
+		{"notanadj-owl", false},
+		{"misty-notanoun", false},
+		{"", false},
+		{"justone", false},
+	}
+	for _, tc := range cases {
+		if got := LooksLikeGeneratedSessionName(tc.title); got != tc.want {
+			t.Errorf("LooksLikeGeneratedSessionName(%q) = %v, want %v", tc.title, got, tc.want)
+		}
+	}
+}
+
+func TestIsContinuityUnnamed(t *testing.T) {
+	if !IsContinuityUnnamed(true, false, "clerk") {
+		t.Error("AutoName must mark even after a display title is promoted")
+	}
+	if IsContinuityUnnamed(false, true, "misty-owl") {
+		t.Error("title-locked generated handle is an explicit name")
+	}
+	if IsContinuityUnnamed(false, false, "alchemist") {
+		t.Error("distinctive unlocked title is a continuity handle")
+	}
+	if !IsContinuityUnnamed(false, false, "misty-owl") {
+		t.Error("unlocked generated handle should still be unnamed")
+	}
+}
+
 func TestCryptoRandInt(t *testing.T) {
 	// Should return values in [0, max)
 	for range 100 {

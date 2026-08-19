@@ -136,7 +136,7 @@ func actionablePriority(s Status) int {
 		return 1
 	case StatusRunning, StatusStarting:
 		return 2
-	case StatusIdle, StatusQueued, "":
+	case StatusIdle, StatusQueued, StatusNeverStarted, "":
 		return 3
 	case StatusStopped:
 		return 4

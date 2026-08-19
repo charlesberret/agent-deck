@@ -2440,6 +2440,10 @@ type ToolDef struct {
 	// Icon is the emoji/symbol to display
 	Icon string `toml:"icon,omitempty"`
 
+	// Color is an optional TUI brand tint for this tool ("#RRGGBB" or ANSI "0".."255").
+	// Used for session-row tool styling when no per-session color is set.
+	Color string `toml:"color,omitempty"`
+
 	// BusyPatterns are strings that indicate the tool is busy
 	BusyPatterns []string `toml:"busy_patterns,omitempty"`
 
@@ -3793,22 +3797,22 @@ func GetToolIcon(toolName string) string {
 		return def.Icon
 	}
 
-	// Built-in icons
+	// Built-in icons — monochrome geometric / text symbols only
 	switch toolName {
 	case "claude":
-		return "🤖"
+		return "▣" // square (no mono space-invader glyph)
 	case "gemini":
-		return "✨"
+		return "✧" // hollow star (agy takes filled ✦ for prominence)
 	case "opencode":
-		return "🌐"
+		return "◇"
 	case "codex":
-		return "💻"
+		return "☁" // monochrome cloud mark
 	case "copilot":
-		return "🐙"
+		return "⌘"
 	case "crush":
-		return "💘"
+		return "♥"
 	case "cursor":
-		return "📝"
+		return "▭"
 	case "hermes":
 		return "☤"
 	case "deepseek":
@@ -3816,10 +3820,19 @@ func GetToolIcon(toolName string) string {
 	case "pi":
 		return "π"
 	case "shell":
-		return "🐚"
+		return "›"
 	default:
-		return "🐚"
+		return "›"
 	}
+}
+
+// GetToolColor returns an optional brand tint for a tool ("#RRGGBB" or ANSI index).
+// Empty means use UI defaults / ToolColor heuristics.
+func GetToolColor(toolName string) string {
+	if def := GetToolDef(toolName); def != nil && def.Color != "" {
+		return def.Color
+	}
+	return ""
 }
 
 // GetToolBusyPatterns returns busy patterns for a tool (custom + built-in)

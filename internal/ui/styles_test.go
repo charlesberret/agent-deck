@@ -47,7 +47,7 @@ func TestToolIcon(t *testing.T) {
 		{"gemini", IconGemini},
 		{"opencode", IconOpenCode},
 		{"codex", IconCodex},
-		{"cursor", "📝"},
+		{"cursor", "▭"},
 		{"pi", IconPi},
 		{"shell", IconShell},
 		{"unknown", IconShell},
@@ -114,26 +114,19 @@ func TestInitTheme_StylesReinitialized(t *testing.T) {
 }
 
 func TestToolStyleCache_ReinitializedOnThemeChange(t *testing.T) {
-	// Initialize with dark theme
+	// House palette: Claude uses ToolColor rust hex, not theme ColorOrange.
 	InitTheme("dark")
-	darkOrangeColor := ColorOrange
-
-	// The tool style cache should use dark theme orange
 	claudeStyle := GetToolStyle("claude")
-	if claudeStyle.GetForeground() != darkOrangeColor {
-		t.Errorf("Claude style should use dark theme orange color")
+	if claudeStyle.GetForeground() != ToolColor("claude") {
+		t.Errorf("Claude style should match ToolColor(claude)")
 	}
 
-	// Switch to light theme
+	// Cache rebuilds on theme switch and still tracks ToolColor
 	InitTheme("light")
-	lightOrangeColor := ColorOrange
-
-	// The tool style cache should now use light theme orange
 	claudeStyle = GetToolStyle("claude")
-	if claudeStyle.GetForeground() != lightOrangeColor {
-		t.Errorf("Claude style should use light theme orange color after theme change")
+	if claudeStyle.GetForeground() != ToolColor("claude") {
+		t.Errorf("Claude style should still match ToolColor after theme change")
 	}
 
-	// Reset to dark for other tests
 	InitTheme("dark")
 }

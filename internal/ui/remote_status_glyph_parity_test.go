@@ -56,7 +56,7 @@ func TestRemoteRowStatusGlyph_MatchesLocalRowGlyph(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			gotIcon, gotStyle := remoteRowStatusGlyph(tc.status, tc.substate, tc.archived)
 			wantIcon, wantStyle := rowStatusGlyph(
-				session.Status(tc.status), session.Substate(tc.substate), tc.archived)
+				session.Status(tc.status), session.Substate(tc.substate), tc.archived, false)
 
 			if gotIcon != wantIcon {
 				t.Errorf("glyph = %q, want %q — remote rows must use the local glyph set",
@@ -242,7 +242,7 @@ func TestRemoteSession_RowAndPreviewAgree(t *testing.T) {
 				RemoteName:    "dev",
 			}
 
-			wantGlyph, _ := rowStatusGlyph(session.Status(status), "", false)
+			wantGlyph, _ := rowStatusGlyph(session.Status(status), "", false, false)
 
 			var b strings.Builder
 			home.renderRemoteSessionItem(&b, item, false)

@@ -413,7 +413,7 @@ type Home struct {
 	// Remote tree fold state — headers the user collapsed, keyed by Item.Path
 	// ("remotes/<name>" or "remotes/<name>/<group>"). Remote groups are
 	// synthetic UI buckets, not rows in groupTree, so they need their own
-	// store rather than groupTree's expanded flags.
+	// store rather than groupTree's expanded flags. Missing key => expanded.
 	remoteGroupsCollapsed map[string]bool
 
 	// Manual order of remote session rows (#1875): remote -> group path ->
@@ -422,6 +422,7 @@ type Home struct {
 	// is persisted in ui_state (see applyRemoteSessionOrder for the drift
 	// rules and remoteOrder for why the scoping is nested).
 	remoteSessionOrder remoteOrder
+
 
 	// Worktree dirty status cache (lazy, 10s TTL)
 	worktreeDirtyCache   map[string]bool      // sessionID -> isDirty
@@ -481,6 +482,8 @@ type Home struct {
 	setupRunningSessions map[string]time.Time        // sessionID -> setup script start time
 	creatingSessions     map[string]*CreatingSession // tempID -> placeholder for worktree creation in progress
 	animationFrame       int                         // Current frame for spinner animation
+	motionFrame          int                         // Status-glyph pulse/blip phase (400ms)
+	motionArmed          bool                        // motionTick chain is live
 
 	// Context for cleanup
 	ctx    context.Context
@@ -1205,11 +1208,21 @@ func topLevelGroupPath(path string) string {
 // selection (and every nested group under it). Other top-level folders are
 // left alone. (Shift+Left)
 func (h *Home) collapseAllGroups() {
-	if h.groupTree == nil {
-		return
-	}
 	scope := topLevelGroupPath(h.selectedScopePath())
 	if scope == "" {
+		return
+	}
+	if strings.HasPrefix(scope, "remotes/") {
+		h.setRemoteExpandedSubtree(scope, false)
+		h.rebuildFlatItems()
+		h.moveCursorToRemoteGroup(remoteHostFromPath(scope), scope)
+		if h.cursor >= len(h.flatItems) {
+			h.cursor = max(0, len(h.flatItems)-1)
+		}
+		h.maintenanceMsg = "Collapsed " + scopeLeafName(scope)
+		return
+	}
+	if h.groupTree == nil {
 		return
 	}
 	h.groupTree.CollapseDescendants(scope)
@@ -1229,11 +1242,21 @@ func (h *Home) collapseAllGroups() {
 // selection (and every nested group under it). Other top-level folders are
 // left alone. (Shift+Right)
 func (h *Home) expandAllGroups() {
-	if h.groupTree == nil {
-		return
-	}
 	scope := topLevelGroupPath(h.selectedScopePath())
 	if scope == "" {
+		return
+	}
+	if strings.HasPrefix(scope, "remotes/") {
+		h.setRemoteExpandedSubtree(scope, true)
+		h.rebuildFlatItems()
+		h.moveCursorToRemoteGroup(remoteHostFromPath(scope), scope)
+		if h.cursor >= len(h.flatItems) {
+			h.cursor = max(0, len(h.flatItems)-1)
+		}
+		h.maintenanceMsg = "Expanded " + scopeLeafName(scope)
+		return
+	}
+	if h.groupTree == nil {
 		return
 	}
 	h.groupTree.ExpandDescendants(scope)
@@ -1248,10 +1271,10 @@ func (h *Home) expandAllGroups() {
 
 // collapseEntireTree folds every group in the deck (Cmd+Shift+Left).
 func (h *Home) collapseEntireTree() {
-	if h.groupTree == nil {
-		return
+	if h.groupTree != nil {
+		h.groupTree.CollapseAllGroups()
 	}
-	h.groupTree.CollapseAllGroups()
+	h.setAllRemoteExpanded(false)
 	h.rebuildFlatItems()
 	if h.cursor >= len(h.flatItems) {
 		h.cursor = max(0, len(h.flatItems)-1)
@@ -1262,16 +1285,100 @@ func (h *Home) collapseEntireTree() {
 
 // expandEntireTree opens every group in the deck (Cmd+Shift+Right).
 func (h *Home) expandEntireTree() {
-	if h.groupTree == nil {
-		return
+	if h.groupTree != nil {
+		h.groupTree.ExpandAllGroups()
 	}
-	h.groupTree.ExpandAllGroups()
+	h.setAllRemoteExpanded(true)
 	h.rebuildFlatItems()
 	if h.cursor >= len(h.flatItems) {
 		h.cursor = max(0, len(h.flatItems)-1)
 	}
 	h.saveGroupState()
 	h.maintenanceMsg = "All groups expanded"
+}
+
+// remoteHostFromPath extracts the host from "remotes/<host>/...".
+func remoteHostFromPath(path string) string {
+	rest := strings.TrimPrefix(path, "remotes/")
+	if i := strings.Index(rest, "/"); i >= 0 {
+		return rest[:i]
+	}
+	return rest
+}
+
+// isRemoteExpanded reports whether a remotes/* path is expanded.
+// Missing keys default to true (open), matching local group defaults.
+func (h *Home) isRemoteExpanded(path string) bool {
+	return !h.isRemoteGroupCollapsed(path)
+}
+
+// setRemoteExpanded records expand state for a single remotes/* path without
+// rebuilding (callers rebuild once after a subtree update).
+func (h *Home) setRemoteExpanded(path string, expanded bool) {
+	if path == "" {
+		return
+	}
+	if h.remoteGroupsCollapsed == nil {
+		h.remoteGroupsCollapsed = make(map[string]bool)
+	}
+	if expanded {
+		delete(h.remoteGroupsCollapsed, path)
+	} else {
+		h.remoteGroupsCollapsed[path] = true
+	}
+}
+
+// setRemoteExpandedSubtree sets expand state for a remote host (or subpath)
+// and every known group header under it.
+func (h *Home) setRemoteExpandedSubtree(scope string, expanded bool) {
+	if scope == "" || !strings.HasPrefix(scope, "remotes/") {
+		return
+	}
+	h.setRemoteExpanded(scope, expanded)
+	host := remoteHostFromPath(scope)
+	h.remoteSessionsMu.RLock()
+	sessions := h.remoteSessions[host]
+	h.remoteSessionsMu.RUnlock()
+	for _, p := range collectRemoteGroupPaths(host, sessions) {
+		if p == scope || strings.HasPrefix(p, scope+"/") {
+			h.setRemoteExpanded(p, expanded)
+		}
+	}
+	for p := range h.remoteGroupsCollapsed {
+		if p == scope || strings.HasPrefix(p, scope+"/") {
+			h.setRemoteExpanded(p, expanded)
+		}
+	}
+}
+
+// setAllRemoteExpanded opens or folds every known remote host and sub-group.
+func (h *Home) setAllRemoteExpanded(expanded bool) {
+	h.remoteSessionsMu.RLock()
+	names := make([]string, 0, len(h.remoteSessions))
+	byHost := make(map[string][]session.RemoteSessionInfo, len(h.remoteSessions))
+	for name, sessions := range h.remoteSessions {
+		names = append(names, name)
+		byHost[name] = sessions
+	}
+	h.remoteSessionsMu.RUnlock()
+	for _, name := range names {
+		for _, p := range collectRemoteGroupPaths(name, byHost[name]) {
+			h.setRemoteExpanded(p, expanded)
+		}
+	}
+	if expanded {
+		for p := range h.remoteGroupsCollapsed {
+			if strings.HasPrefix(p, "remotes/") {
+				delete(h.remoteGroupsCollapsed, p)
+			}
+		}
+	}
+}
+
+// toggleRemoteGroupAtCursor toggles expand state for a remote group header
+// and rebuilds the list, restoring the cursor to that header.
+func (h *Home) toggleRemoteGroupAtCursor(path string) {
+	h.toggleRemoteGroup(remoteHostFromPath(path), path)
 }
 
 // scopeLeafName is the last path segment of a group path (for status banners).
@@ -1564,6 +1671,7 @@ type (
 	tickMsg        time.Time
 	quitMsg        bool
 	reviverTickMsg struct{}
+	motionTickMsg  struct{}
 )
 
 // previewFetchedMsg is sent when async preview content is ready
@@ -1909,6 +2017,7 @@ func NewHomeWithProfileAndMode(profile string) *Home {
 		windowsCollapsed:          make(map[string]bool),
 		remoteGroupsCollapsed:     make(map[string]bool),
 		remoteSessionOrder:        make(remoteOrder),
+
 		worktreeDirtyCache:        make(map[string]bool),
 		worktreeDirtyCacheTs:      make(map[string]time.Time),
 		statusTrigger:             make(chan statusUpdateRequest, 1), // Buffered to avoid blocking
@@ -3851,6 +3960,7 @@ func (h *Home) Init() tea.Cmd {
 		h.sessionLoadCmd(nil, true),
 
 		h.tick(),
+		h.motionTick(),
 		h.reviverTick(),
 		h.checkForUpdate(),
 		h.fetchRemoteSessions,
@@ -4857,6 +4967,35 @@ func (h *Home) tick() tea.Cmd {
 	})
 }
 
+// motionTick drives status-glyph pulse/blip without touching tmux polling.
+func (h *Home) motionTick() tea.Cmd {
+	h.motionArmed = true
+	return tea.Tick(motionTickInterval, func(time.Time) tea.Msg {
+		return motionTickMsg{}
+	})
+}
+
+func (h *Home) anyStatusMotion() bool {
+	if snap := h.getSessionRenderSnapshot(); snap != nil {
+		for _, st := range snap {
+			if classifyStatusMotion(st.status, st.substate, false, st.neverStarted) != motionNone {
+				return true
+			}
+		}
+	}
+	h.remoteSessionsMu.RLock()
+	defer h.remoteSessionsMu.RUnlock()
+	for _, list := range h.remoteSessions {
+		for i := range list {
+			st := session.Status(list[i].Status)
+			if classifyStatusMotion(st, "", false, false) != motionNone {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // reviverTick fires every 60s to sweep the session list for instances whose
 // tmux server survived an SSH scope cleanup but whose control pipe got
 // reaped. See .planning/v178-ssh-reviver/PLAN.md (REPORT-D).
@@ -5527,8 +5666,13 @@ type sessionRenderState struct {
 	account        string // Stored slot; empty means inherited, not a login identity.
 	accountDisplay accountPresentation
 	title          string // Instance.Title at snapshot time
+	groupPath      string // Instance.GroupPath — used to drop path crumbs from pane subtitles
 	autoName       bool   // session displays a captured/live task description
 	autoNameDesc   string // last persisted auto-name description (fallback when paneTitle empty)
+	titleLocked    bool   // explicit user title — never treat as a generated handle
+	// neverStarted is true when LastStartedAt is zero — the seat has never
+	// successfully launched. Used to de-alarm DB-default StatusError rows.
+	neverStarted bool
 }
 
 // displaySessionTitle returns the label to render for a session row. For an
@@ -5597,10 +5741,14 @@ func displaySessionTitleFromState(state sessionRenderState) string {
 // subtitle. The subtitle is empty when there is nothing to show. Callers may
 // layer extra visibility policy on the subtitle — the overview, for instance,
 // only renders it for the selected row or when showPaneTitles is enabled.
+//
+// Subtitles are run through compactPaneSubtitle so tool-authored titles that
+// restate the session name and tool (Grok: "alchemist-grok - Grok 4.6 -
+// alchemist - grok") collapse to the non-redundant residue (e.g. "Grok 4.6").
 func sessionDisplayLabels(inst *session.Instance, paneTitle string) (title, subtitle string) {
 	title = displaySessionTitle(inst, paneTitle)
 	if !inst.GetAutoName() {
-		subtitle = paneTitle
+		subtitle = compactPaneSubtitle(inst.GetTitleThreadSafe(), inst.GetToolThreadSafe(), inst.GroupPath, paneTitle)
 	}
 	return title, subtitle
 }
@@ -5612,9 +5760,21 @@ func sessionDisplayLabels(inst *session.Instance, paneTitle string) (title, subt
 func sessionDisplayLabelsFromState(state sessionRenderState) (title, subtitle string) {
 	title = displaySessionTitleFromState(state)
 	if !state.autoName {
-		subtitle = state.paneTitle
+		subtitle = compactPaneSubtitle(state.title, state.tool, state.groupPath, state.paneTitle)
 	}
 	return title, subtitle
+}
+
+// unnamedSessionGlyph marks seats that have no explicit continuity name.
+const unnamedSessionGlyph = "~"
+
+// unnamedSessionMarker is the dim `~ ` prefix on unnamed/scratch session rows.
+func unnamedSessionMarker(selected bool) string {
+	style := DimStyle
+	if selected {
+		style = SessionStatusSelStyle
+	}
+	return style.Render(unnamedSessionGlyph + " ")
 }
 
 // cleanPaneTitle strips spinner/done marker characters from a tmux pane title
@@ -5635,6 +5795,228 @@ func cleanPaneTitle(title string) string {
 		return ""
 	}
 	return cleaned
+}
+
+// compactPaneSubtitle drops pane-title segments that only restate identity the
+// deck already shows (session title, tool badge, group-path crumbs). Grok sets
+// titles like:
+//
+//	alchemist-grok - Grok 4.6 - alchemist - grok
+//	palette-builder - Grok 4.5 - design - grok   (group home/design)
+//
+// After compaction those become "Grok 4.6" / "Grok 4.5". Real task blurbs
+// ("Preparing run_terminal_command…") are kept. paneTitle may already be
+// cleanPaneTitle'd; cleaning again is a no-op for ordinary text.
+//
+// groupPath is slash-separated (e.g. "home/design", "xanadu-agents/alchemist");
+// each path component is treated as a redundant crumb when it appears as its
+// own pane-title segment.
+func compactPaneSubtitle(sessionTitle, tool, groupPath, paneTitle string) string {
+	cleaned := cleanPaneTitle(paneTitle)
+	if cleaned == "" {
+		return ""
+	}
+	titleLower := strings.ToLower(strings.TrimSpace(sessionTitle))
+	toolLower := strings.ToLower(strings.TrimSpace(tool))
+	titleSlug := strings.ReplaceAll(titleLower, " ", "-")
+	titleUnder := strings.ReplaceAll(titleLower, " ", "_")
+
+	// Path crumbs: "home/design" → {"home","design"}; also last segment alone.
+	pathCrumbs := map[string]struct{}{}
+	for _, part := range strings.Split(groupPath, "/") {
+		p := strings.ToLower(strings.TrimSpace(part))
+		if p != "" && p != "." {
+			pathCrumbs[p] = struct{}{}
+		}
+	}
+
+	// Product / provider names that only restate the tool badge.
+	productAliases := map[string]struct{}{
+		"grok": {}, "xai": {}, "claude": {}, "anthropic": {},
+		"gemini": {}, "codex": {}, "openai": {}, "cursor": {},
+		"opencode": {}, "hermes": {}, "pi": {}, "aider": {},
+		"agy": {}, "antigravity": {},
+	}
+	if toolLower != "" {
+		productAliases[toolLower] = struct{}{}
+		// oll-mid → also drop bare "oll" crumbs rarely
+		if i := strings.IndexByte(toolLower, '-'); i > 0 {
+			productAliases[toolLower[:i]] = struct{}{}
+		}
+	}
+
+	isModelLabel := func(sl string) bool {
+		// "Grok 4.6", "grok-4.5", "Claude 4 Sonnet", "gpt-5.4", …
+		if strings.Contains(sl, " ") {
+			fields := strings.Fields(sl)
+			if len(fields) >= 2 {
+				head := fields[0]
+				if _, ok := productAliases[head]; ok {
+					// product + version-ish second field
+					return true
+				}
+			}
+		}
+		// dotted model ids
+		if strings.ContainsAny(sl, "0123456789") && (strings.Contains(sl, ".") || strings.Contains(sl, "-")) {
+			for alias := range productAliases {
+				if strings.HasPrefix(sl, alias) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	looksLikeTask := func(s string) bool {
+		// Busy/task blurbs Claude/Grok emit while working.
+		if strings.Contains(s, "…") || strings.Contains(s, "...") {
+			return true
+		}
+		if strings.Contains(s, ":") {
+			return true
+		}
+		lower := strings.ToLower(s)
+		for _, kw := range []string{
+			"preparing", "running", "thinking", "working", "reading",
+			"writing", "searching", "building", "loading", "waiting",
+			"compiling", "executing", "tool", "func ",
+		} {
+			if strings.Contains(lower, kw) {
+				return true
+			}
+		}
+		// Multi-word free text (not a single path crumb)
+		if strings.Contains(s, " ") && !isModelLabel(strings.ToLower(s)) {
+			// "Missing Code Agent in Household Roster" — real conversation title
+			return true
+		}
+		return false
+	}
+
+	isRedundant := func(seg string) bool {
+		s := strings.TrimSpace(seg)
+		if s == "" {
+			return true
+		}
+		sl := strings.ToLower(s)
+
+		// Model labels are never redundant — they are the residue we keep.
+		if isModelLabel(sl) {
+			return false
+		}
+		// Task blurbs always kept.
+		if looksLikeTask(s) {
+			return false
+		}
+
+		if _, ok := productAliases[sl]; ok {
+			return true
+		}
+		if toolLower != "" && sl == toolLower {
+			return true
+		}
+		if titleLower != "" && (sl == titleLower || sl == titleSlug || sl == titleUnder) {
+			return true
+		}
+		// "career" when title is "career-coord"
+		if titleSlug != "" && (strings.HasPrefix(titleSlug, sl+"-") || strings.HasPrefix(titleLower, sl+" ")) {
+			return true
+		}
+		// "xanadu-herald-coord" when title is "herald" — compound handle restates seat
+		if titleSlug != "" && !strings.Contains(sl, " ") {
+			if strings.Contains(sl, "-"+titleSlug+"-") ||
+				strings.HasPrefix(sl, titleSlug+"-") ||
+				strings.HasSuffix(sl, "-"+titleSlug) {
+				return true
+			}
+		}
+		// Group-path crumbs ("design" from home/design)
+		if _, ok := pathCrumbs[sl]; ok {
+			return true
+		}
+		if toolLower != "" {
+			for _, prefix := range []string{titleLower, titleSlug, titleUnder} {
+				if prefix == "" {
+					continue
+				}
+				if sl == prefix+"-"+toolLower || sl == prefix+"_"+toolLower {
+					return true
+				}
+			}
+			if strings.HasSuffix(sl, "-"+toolLower) {
+				prefix := strings.TrimSuffix(sl, "-"+toolLower)
+				if prefix == titleLower || prefix == titleSlug || prefix == titleUnder {
+					return true
+				}
+				// Also drop "{title-stem}-{tool}" when stem is a path crumb
+				if _, ok := pathCrumbs[prefix]; ok {
+					return true
+				}
+			}
+		}
+		// Pure duration crumbs alone ("96s", "29s") when not next to a task —
+		// drop; they rarely help without context.
+		if len(sl) > 1 && sl[len(sl)-1] == 's' {
+			allDig := true
+			for _, r := range sl[:len(sl)-1] {
+				if r < '0' || r > '9' {
+					allDig = false
+					break
+				}
+			}
+			if allDig {
+				return true
+			}
+		}
+		// Single short path-like token with no letters beyond [a-z0-9_-] and
+		// not a model: if it appears inside the title slug, drop.
+		if titleSlug != "" && !strings.Contains(sl, " ") && strings.Contains(titleSlug, sl) {
+			return true
+		}
+		return false
+	}
+
+	// Prefer " - " split (Grok / agent-deck house style); also try en-dash.
+	parts := strings.Split(cleaned, " - ")
+	if len(parts) == 1 {
+		parts = strings.Split(cleaned, " – ")
+	}
+	// Some tools use " · " or " | "
+	if len(parts) == 1 {
+		for _, sep := range []string{" · ", " | ", " — "} {
+			if strings.Contains(cleaned, sep) {
+				parts = strings.Split(cleaned, sep)
+				break
+			}
+		}
+	}
+	kept := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if isRedundant(p) {
+			continue
+		}
+		kept = append(kept, p)
+	}
+
+	// If we kept both a model label and only path-like leftovers already
+	// filtered, join. If nothing left, empty (icon + title already tell the story).
+	return strings.Join(kept, " - ")
+}
+
+// renderToolBadge paints the brand icon for tool (⚡ ▣ ✦ …) in style.
+// Falls back to the bare tool name when no icon is registered — keeps
+// unknown custom tools readable without inventing a glyph.
+func renderToolBadge(tool string, style lipgloss.Style) string {
+	if tool == "" {
+		return ""
+	}
+	label := ToolIcon(tool)
+	if label == "" {
+		label = tool
+	}
+	return style.Render(" " + label)
 }
 
 func (h *Home) getSessionRenderSnapshot() map[string]sessionRenderState {
@@ -5671,8 +6053,11 @@ func (h *Home) refreshSessionRenderSnapshot(instances []*session.Instance) {
 			// Tea event-loop goroutine.
 			account:      inst.GetAccountThreadSafe(),
 			title:        inst.GetTitleThreadSafe(),
+			groupPath:    inst.GroupPath,
 			autoName:     inst.GetAutoName(),
 			autoNameDesc: inst.GetAutoNameDescription(),
+			titleLocked:  inst.TitleLocked,
+			neverStarted: inst.LastStartedAt.IsZero(),
 		}
 		display, ok := accounts[state.account]
 		if !ok {
@@ -5726,8 +6111,11 @@ func (h *Home) getSessionRenderState(inst *session.Instance) sessionRenderState 
 		account:        account,
 		accountDisplay: newAccountPresentation(account),
 		title:          inst.GetTitleThreadSafe(),
+		groupPath:      inst.GroupPath,
 		autoName:       inst.GetAutoName(),
 		autoNameDesc:   inst.GetAutoNameDescription(),
+		titleLocked:    inst.TitleLocked,
+		neverStarted:   inst.LastStartedAt.IsZero(),
 	}
 }
 
@@ -8831,6 +9219,14 @@ func (h *Home) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		h.refreshWatcherPanel()
 		return h, nil
 
+	case motionTickMsg:
+		h.motionFrame++
+		if h.anyStatusMotion() {
+			return h, h.motionTick()
+		}
+		h.motionArmed = false
+		return h, nil
+
 	case tickMsg:
 		// Honor a pending `agent-deck session focus <id>` request from the CLI.
 		// A non-nil cmd means the request asked to --attach the session: open it
@@ -9075,6 +9471,9 @@ func (h *Home) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		cmds := []tea.Cmd{h.tick(), previewCmd, remoteFetchCmd, remoteLatencyCmd, h.syncRemotePaneWatch()}
+		if !h.motionArmed && h.anyStatusMotion() {
+			cmds = append(cmds, h.motionTick())
+		}
 		if h.fullRepaint {
 			cmds = append(cmds, tea.ClearScreen)
 		}
@@ -11533,10 +11932,10 @@ func (h *Home) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			item := h.flatItems[h.cursor]
 			if item.Type == session.ItemTypeSession && item.Session != nil {
 				status := item.Session.Status
-				if status == session.StatusStopped || status == session.StatusError {
+				if status == session.StatusStopped || status == session.StatusError || status == session.StatusNeverStarted {
 					h.confirmDialog.ShowRemoveSession(item.Session.ID, item.Session.Title)
 				} else {
-					h.setError(fmt.Errorf("session must be stopped or errored to remove; use 'd' to destructively delete a %s session", status))
+					h.setError(fmt.Errorf("session must be stopped, never_started, or errored to remove; use 'd' to destructively delete a %s session", status))
 				}
 			}
 		}
@@ -16725,6 +17124,8 @@ func (h *Home) countSessionStatuses() (running, waiting, idle, stopped, errored 
 			stopped++
 		case session.StatusError:
 			errored++
+		case session.StatusNeverStarted:
+			// Dormant seats — not errors; leave out of alarm counters.
 		}
 	}
 
@@ -16747,6 +17148,8 @@ func (h *Home) countSessionStatuses() (running, waiting, idle, stopped, errored 
 				stopped++
 			case "error":
 				errored++
+			case "never_started", "never-started":
+				// Dormant — not an error counter.
 			}
 		}
 	}
@@ -19504,31 +19907,19 @@ func (h *Home) renderSessionItem(
 	// Status indicator with consistent sizing. rowStatusGlyph maps the coarse
 	// status (plus the Honest-Status-v2 error substates) to a glyph, and forces
 	// the stopped glyph for archived sessions whose snapshot still carries a
-	// stale live status.
-	statusIcon, statusStyle := rowStatusGlyph(instStatus, instSubstate, inst.IsArchived())
+	// stale live status. neverStarted demotes DB-default "error" seats to a
+	// calm dormant glyph (·) so the list is not a sea of red ✕.
+	statusIcon, statusStyle := rowStatusGlyph(instStatus, instSubstate, inst.IsArchived(), instState.neverStarted)
+	if !selected {
+		motion := classifyStatusMotion(instStatus, instSubstate, inst.IsArchived(), instState.neverStarted)
+		statusIcon, statusStyle = applyStatusMotion(statusIcon, statusStyle, motion, h.motionFrame)
+	}
 
 	status := statusStyle.Render(statusIcon)
 
-	// Title styling - add bold/underline for accessibility (colorblind users)
-	var titleStyle lipgloss.Style
-	switch instStatus {
-	case session.StatusRunning, session.StatusWaiting:
-		// Bold for active states (distinguishable without color)
-		titleStyle = SessionTitleActive
-	case session.StatusError:
-		// Underline for error (distinguishable without color)
-		titleStyle = SessionTitleError
-	default:
-		titleStyle = SessionTitleDefault
-	}
-
-	// Issue #391: per-session color tint. When the user has set
-	// Instance.Color (validated CLI-side in isValidSessionColor), override
-	// the title foreground with that color. Bold/underline from the
-	// status-based style above is preserved — only the hue changes, so
-	// colorblind accessibility via weight still works. Empty Color is the
-	// default and leaves titleStyle untouched (zero behavior change for
-	// users who haven't opted in).
+	// Title styling: all sessions regular weight / no underline (status is on
+	// the glyph only). Per-session Instance.Color still tints when set (#391).
+	titleStyle := SessionTitleDefault
 	if inst.Color != "" {
 		titleStyle = titleStyle.Foreground(lipgloss.Color(inst.Color))
 	}
@@ -19565,7 +19956,8 @@ func (h *Home) renderSessionItem(
 		}
 	}
 
-	tool := toolStyle.Render(" " + instTool)
+	// Brand icon only (⚡ not "grok") — color carries the identity.
+	tool := renderToolBadge(instTool, toolStyle)
 
 	// Supervisor badge for the maestro row.
 	maestroBadge := ""
@@ -19723,6 +20115,14 @@ func (h *Home) renderSessionItem(
 	if isMaestro {
 		displayTitle = "⬢ " + displayTitle
 	}
+	// Scratch / unnamed seat: no explicit rename (TUI `r`, `-t`, create
+	// dialog, or Claude `/rename`) that agent-deck can treat as a continuity
+	// handle. Dim `~` is small and distinctive next to named seats.
+	unnamedMark := ""
+	if session.IsContinuityUnnamed(instState.autoName, instState.titleLocked, instState.title) {
+		unnamedMark = unnamedSessionMarker(selected)
+		displayTitle = unnamedMark + displayTitle
+	}
 	// Include the stored slot in the existing badge/title cell budget. Normal
 	// titles need the same reservation as auto-names so the badge stays visible.
 	reserved := leftGutterWidth + cellWidth(baseIndent) + cellWidth(selectionPrefix) +
@@ -19848,14 +20248,14 @@ func (h *Home) renderWindowItem(b *strings.Builder, item session.Item, selected 
 	winLabel := indexStyle.Render(fmt.Sprintf("[%d]", item.WindowIndex))
 	winName := nameStyle.Render(" " + item.WindowName)
 
-	// Tool badge (if detected)
+	// Tool badge (if detected) — brand icon, same as session rows
 	toolBadge := ""
 	if item.WindowTool != "" {
 		toolStyle := GetToolStyle(item.WindowTool)
 		if selected {
 			toolStyle = SessionStatusSelStyle
 		}
-		toolBadge = toolStyle.Render(" " + item.WindowTool)
+		toolBadge = renderToolBadge(item.WindowTool, toolStyle)
 	}
 
 	row := fmt.Sprintf(
@@ -19991,11 +20391,24 @@ func remoteRowGutter(selected bool) string {
 
 // renderRemoteGroupItem renders a remote group header (e.g., "remotes/dev")
 func (h *Home) renderRemoteGroupItem(b *strings.Builder, item session.Item, selected bool) {
+	// Name stays yellow (remote host signal). Count uses the same GroupCount*
+	// styles as local groups so "(N)" reads identically on both.
 	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true) // yellow
-	countStyle := DimStyle
-	expandIcon := "▾"
-	if h.isRemoteGroupCollapsed(item.Path) {
-		expandIcon = "▸" // same glyph pair the local group rows use
+	countStyle := GroupCountStyle
+	// ▾ open / ▸ folded — same glyphs as local group headers.
+	var expandIcon string
+	if !h.isRemoteGroupCollapsed(item.Path) {
+		if selected {
+			expandIcon = GroupExpandSelStyle.Render("▾")
+		} else {
+			expandIcon = GroupExpandStyle.Render("▾")
+		}
+	} else {
+		if selected {
+			expandIcon = GroupExpandSelStyle.Render("▸")
+		} else {
+			expandIcon = GroupExpandStyle.Render("▸")
+		}
 	}
 	if selected {
 		nameStyle = GroupNameSelStyle
@@ -20088,14 +20501,13 @@ func remoteStatusSuffix(running, waiting int) string {
 	return out
 }
 
-// renderRemoteLatencyMarker returns the colored ` — Xms` (or ` — offline`)
+// renderRemoteLatencyMarker returns the muted ` — Xms` (or ` — offline`)
+
 // suffix for a remote group header. Empty string when no measurement has
 // been taken yet so the header doesn't jitter on first paint. See #1103.
 //
-// Color thresholds:
-//   - green:  <  50ms        (lipgloss color 2)
-//   - yellow: 50-200ms       (color 3)
-//   - red:    > 200ms or offline (color 1)
+// House styling: soft gray/pastel only — no traffic-light reds/greens. The
+// number is informational; status already lives on session glyphs.
 func (h *Home) renderRemoteLatencyMarker(remoteName string, selected bool) string {
 	h.remoteLatencyMu.RLock()
 	lat, ok := h.remoteLatency[remoteName]
@@ -20105,30 +20517,30 @@ func (h *Home) renderRemoteLatencyMarker(remoteName string, selected bool) strin
 	}
 
 	var text string
-	var color lipgloss.Color
+	// Tokyo Night comment-gray family: easy on the eyes next to yellow remote names.
+	color := remoteLatencyColor
 	switch {
 	case lat.Offline:
 		text = " — offline"
-		color = lipgloss.Color("1") // red
-	case lat.MS < 50:
-		text = fmt.Sprintf(" — %dms", lat.MS)
-		color = lipgloss.Color("2") // green
-	case lat.MS <= 200:
-		text = fmt.Sprintf(" — %dms", lat.MS)
-		color = lipgloss.Color("3") // yellow
+		color = remoteLatencyOfflineColor
 	default:
 		text = fmt.Sprintf(" — %dms", lat.MS)
-		color = lipgloss.Color("1") // red
 	}
 
 	style := lipgloss.NewStyle().Foreground(color)
 	if selected {
-		// On the selected row, preserve color so the threshold signal
-		// stays readable against the highlight background.
-		style = style.Bold(true)
+		// Stay soft on the highlight row — bold would re-introduce noise.
+		style = style.Foreground(remoteLatencySelectedColor)
 	}
 	return style.Render(text)
 }
+
+// Soft latency palette (pastel slate, not ANSI 1/2/3).
+var (
+	remoteLatencyColor         = lipgloss.Color("#7c849c") // muted slate
+	remoteLatencyOfflineColor  = lipgloss.Color("#565f89") // quieter comment gray
+	remoteLatencySelectedColor = lipgloss.Color("#a9b1d6") // slightly brighter on selection
+)
 
 // renderRemoteSessionItem renders a single remote session row
 func (h *Home) renderRemoteSessionItem(b *strings.Builder, item session.Item, selected bool) {
@@ -20138,6 +20550,11 @@ func (h *Home) renderRemoteSessionItem(b *strings.Builder, item session.Item, se
 	}
 
 	statusIcon, sStyle := remoteRowStatusGlyph(rs.Status, rs.Substate, rs.Archived)
+	if !selected {
+		remoteStatus := session.Status(rs.Status)
+		motion := classifyStatusMotion(remoteStatus, session.Substate(rs.Substate), rs.Archived, false)
+		statusIcon, sStyle = applyStatusMotion(statusIcon, sStyle, motion, h.motionFrame)
+	}
 	titleStyle := lipgloss.NewStyle().Foreground(ColorText)
 	if selected {
 		sStyle = SessionStatusSelStyle
@@ -20148,17 +20565,19 @@ func (h *Home) renderRemoteSessionItem(b *strings.Builder, item session.Item, se
 	if len(titleStr) > 25 {
 		titleStr = titleStr[:22] + "..."
 	}
+	// Remotes don't ship AutoName over the wire; mark generated handles only.
+	if session.IsContinuityUnnamed(false, false, rs.Title) {
+		titleStr = unnamedSessionMarker(selected) + titleStr
+	}
 
 	toolStr := ""
 	if rs.Tool != "" {
-		// #1091: use brand-specific color (claude=orange, gemini=purple, …)
-		// so SSH-remote rows match local rows. Falls back to ColorTextDim
-		// for unknown/empty tool names via GetToolStyle.
+		// #1091: brand color matches local rows; icon (not name) for parsimony.
 		tStyle := GetToolStyle(rs.Tool)
 		if selected {
 			tStyle = SessionStatusSelStyle
 		}
-		toolStr = tStyle.Render(" " + rs.Tool)
+		toolStr = renderToolBadge(rs.Tool, tStyle)
 	}
 
 	treeConnector := "├─"

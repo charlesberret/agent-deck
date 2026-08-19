@@ -107,11 +107,13 @@ func FilterByQuery(instances []*Instance, query string) []*Instance {
 
 	// Check for status filters
 	statusFilters := map[string]Status{
-		"waiting": StatusWaiting,
-		"running": StatusRunning,
-		"idle":    StatusIdle,
-		"error":   StatusError,
-		"stopped": StatusStopped,
+		"waiting":       StatusWaiting,
+		"running":       StatusRunning,
+		"idle":          StatusIdle,
+		"error":         StatusError,
+		"stopped":       StatusStopped,
+		"never_started": StatusNeverStarted,
+		"never-started": StatusNeverStarted,
 	}
 
 	// If query matches a status filter exactly, filter by status

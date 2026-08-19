@@ -41,32 +41,96 @@ func TestConnectionStatusLine(t *testing.T) {
 // existing glyph mapping plus the archived override.
 func TestRowStatusGlyph(t *testing.T) {
 	tests := []struct {
-		name     string
-		status   session.Status
-		substate session.Substate
-		archived bool
-		wantIcon string
+		name         string
+		status       session.Status
+		substate     session.Substate
+		archived     bool
+		neverStarted bool
+		wantIcon     string
 	}{
-		{"running", session.StatusRunning, "", false, "●"},
-		{"waiting", session.StatusWaiting, "", false, "◐"},
-		{"idle", session.StatusIdle, "", false, "○"},
-		{"error", session.StatusError, "", false, "✕"},
-		{"stopped", session.StatusStopped, "", false, "■"},
-		{"unknown status falls back to idle glyph", session.Status("weird"), "", false, "○"},
-		{"error + model-unavailable substate", session.StatusError, session.SubstateModelUnavailable, false, "⚡"},
-		{"error + auth substate", session.StatusError, session.SubstateAuth401, false, "🔒"},
-		{"substate glyph only applies in error status", session.StatusRunning, session.SubstateAuth401, false, "●"},
-		{"archived overrides a live status", session.StatusRunning, "", true, "■"},
-		{"archived overrides an error substate glyph", session.StatusError, session.SubstateAuth401, true, "■"},
+		{"running", session.StatusRunning, "", false, false, "●"},
+		{"waiting", session.StatusWaiting, "", false, false, "◐"},
+		{"idle", session.StatusIdle, "", false, false, "○"},
+		{"error (has started)", session.StatusError, "", false, false, "✕"},
+		{"error never started is dormant not alarm", session.StatusError, "", false, true, "·"},
+		{"stopped never started is dormant", session.StatusStopped, "", false, true, "·"},
+		{"idle never started stays idle circle", session.StatusIdle, "", false, true, "○"},
+		{"running never started still shows live", session.StatusRunning, "", false, true, "●"},
+		{"stopped", session.StatusStopped, "", false, false, "■"},
+		{"unknown status falls back to idle glyph", session.Status("weird"), "", false, false, "○"},
+		{"error + model-unavailable substate", session.StatusError, session.SubstateModelUnavailable, false, false, "⚡"},
+		{"error + auth substate", session.StatusError, session.SubstateAuth401, false, false, IconAuthHold},
+		{"status never_started glyph", session.StatusNeverStarted, "", false, false, "·"},
+		{"never-started error ignores auth substate alarm", session.StatusError, session.SubstateAuth401, false, true, "·"},
+		{"substate glyph only applies in error status", session.StatusRunning, session.SubstateAuth401, false, false, "●"},
+		{"archived overrides a live status", session.StatusRunning, "", true, false, "■"},
+		{"archived overrides an error substate glyph", session.StatusError, session.SubstateAuth401, true, false, "■"},
+		{"archived overrides never-started dormant", session.StatusError, "", true, true, "■"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			icon, _ := rowStatusGlyph(tt.status, tt.substate, tt.archived)
+			icon, _ := rowStatusGlyph(tt.status, tt.substate, tt.archived, tt.neverStarted)
 			if icon != tt.wantIcon {
-				t.Errorf("rowStatusGlyph(%q, %q, %v) icon = %q, want %q",
-					tt.status, tt.substate, tt.archived, icon, tt.wantIcon)
+				t.Errorf("rowStatusGlyph(%q, %q, archived=%v, neverStarted=%v) icon = %q, want %q",
+					tt.status, tt.substate, tt.archived, tt.neverStarted, icon, tt.wantIcon)
 			}
 		})
+	}
+}
+
+func TestClassifyStatusMotion(t *testing.T) {
+	tests := []struct {
+		name         string
+		status       session.Status
+		substate     session.Substate
+		archived     bool
+		neverStarted bool
+		want         statusMotion
+	}{
+		{"running is crunch", session.StatusRunning, "", false, false, motionCrunch},
+		{"running + idle-at-prompt is listen", session.StatusRunning, session.SubstateIdleAtEmptyPrompt, false, false, motionListen},
+		{"idle is listen", session.StatusIdle, "", false, false, motionListen},
+		{"waiting stays still (needs eyes)", session.StatusWaiting, "", false, false, motionNone},
+		{"never started is still", session.StatusNeverStarted, "", false, false, motionNone},
+		{"stopped is still", session.StatusStopped, "", false, false, motionNone},
+		{"error is still", session.StatusError, "", false, false, motionNone},
+		{"archived running is still", session.StatusRunning, "", true, false, motionNone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyStatusMotion(tt.status, tt.substate, tt.archived, tt.neverStarted)
+			if got != tt.want {
+				t.Errorf("classifyStatusMotion(...) = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestApplyStatusMotion_LiveSeatsStayFilled(t *testing.T) {
+	// Crunch and listen must never shrink to · or ○ — that is the
+	// misread the house reported (green circle collapsing to a tiny dot).
+	icon, _ := applyStatusMotion("●", SessionStatusRunning, motionCrunch, 0)
+	if icon != "●" {
+		t.Errorf("crunch frame 0 icon = %q, want ●", icon)
+	}
+	icon, _ = applyStatusMotion("●", SessionStatusRunning, motionCrunch, 2)
+	if icon != "●" {
+		t.Errorf("crunch dim frame icon = %q, want ●", icon)
+	}
+	icon, _ = applyStatusMotion("○", SessionStatusIdle, motionListen, 1)
+	if icon != "●" {
+		t.Errorf("listen quiet icon = %q, want ● (filled, not hollow/tiny)", icon)
+	}
+	icon, _ = applyStatusMotion("○", SessionStatusIdle, motionListen, 0)
+	if icon != "●" {
+		t.Errorf("listen blip icon = %q, want ●", icon)
+	}
+	icon, style := applyStatusMotion("◐", SessionStatusWaiting, motionNone, 3)
+	if icon != "◐" {
+		t.Errorf("waiting icon mutated: %q", icon)
+	}
+	if style.GetForeground() != SessionStatusWaiting.GetForeground() {
+		t.Error("waiting style should pass through unchanged")
 	}
 }
 
@@ -84,7 +148,7 @@ func TestRowStatusGlyph_StoppedAuthHold(t *testing.T) {
 		archived bool
 		wantIcon string
 	}{
-		{"stopped + auth substate", session.StatusStopped, session.SubstateAuth401, false, "🔒"},
+		{"stopped + auth substate", session.StatusStopped, session.SubstateAuth401, false, IconAuthHold},
 		{"stopped without auth substate", session.StatusStopped, "", false, "■"},
 		{"stopped + unrelated substate", session.StatusStopped, session.SubstateIdleAtEmptyPrompt, false, "■"},
 		{"stopped + model-unavailable is not an auth hold", session.StatusStopped, session.SubstateModelUnavailable, false, "■"},
@@ -92,7 +156,7 @@ func TestRowStatusGlyph_StoppedAuthHold(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			icon, _ := rowStatusGlyph(tt.status, tt.substate, tt.archived)
+			icon, _ := rowStatusGlyph(tt.status, tt.substate, tt.archived, false)
 			if icon != tt.wantIcon {
 				t.Errorf("rowStatusGlyph(%q, %q, %v) icon = %q, want %q",
 					tt.status, tt.substate, tt.archived, icon, tt.wantIcon)

@@ -372,12 +372,15 @@ func TestPickerToolNames_MapsShellAlias(t *testing.T) {
 	}
 
 	got := PickerToolNames()
-	if len(got) == 0 || got[0] != "shell" {
-		t.Fatalf("PickerToolNames() = %v, want shell first", got)
+	if len(got) == 0 || got[len(got)-1] != "shell" {
+		t.Fatalf("PickerToolNames() = %v, want shell last (house picker order)", got)
 	}
 	for _, name := range got {
 		if name == "gemini" {
 			t.Fatalf("PickerToolNames() should not include hidden gemini: %v", got)
+		}
+		if name == "" {
+			t.Fatalf("PickerToolNames() should map empty command to shell, not %q: %v", name, got)
 		}
 	}
 }

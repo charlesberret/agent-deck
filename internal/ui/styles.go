@@ -2,8 +2,10 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
+	"github.com/asheshgoplani/agent-deck/internal/session"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -184,14 +186,15 @@ var (
 	PreviewMetaStyle    lipgloss.Style
 )
 
-// Tool Icons
+// Tool Icons — monochrome geometric / text symbols only (no polychrome emoji).
+// No clean monochrome "space invader" exists in Unicode (👾 is emoji); Claude gets the square.
 const (
-	IconClaude   = "🤖"
-	IconGemini   = "✨"
-	IconOpenCode = "🌐"
-	IconCodex    = "💻"
+	IconClaude   = "▣" // Claude — solid square (invader-ish block mark)
+	IconGemini   = "✧" // Gemini — hollow star (quieter than agy)
+	IconOpenCode = "◇"
+	IconCodex    = "☁" // Codex — monochrome cloud (text presentation, not rainbow emoji)
 	IconPi       = "π"
-	IconShell    = "🐚"
+	IconShell    = "›"
 )
 
 // MaxNameLength is the maximum allowed length for session and group names.
@@ -495,10 +498,14 @@ func initStyles() {
 	SessionStatusStopped = lipgloss.NewStyle().Foreground(ColorTextDim)
 	SessionStatusSelStyle = lipgloss.NewStyle().Foreground(ColorBg).Background(ColorAccent)
 
-	// Session title styles by state
+	// Session titles: uniform regular weight, no underline. Status is carried by
+	// the status glyph (●/◐/○/✕); groups stay Bold via GroupNameStyle. (House
+	// preference on local/avicenna — upstream used Bold for active / Underline
+	// for error as colorblind weight cues.)
 	SessionTitleDefault = lipgloss.NewStyle().Foreground(ColorText)
-	SessionTitleActive = lipgloss.NewStyle().Foreground(ColorText).Bold(true)
-	SessionTitleError = lipgloss.NewStyle().Foreground(ColorText).Underline(true)
+	SessionTitleActive = lipgloss.NewStyle().Foreground(ColorText)
+	SessionTitleError = lipgloss.NewStyle().Foreground(ColorText)
+	// Selection still uses bold so the cursor row is obvious against neighbors.
 	SessionTitleSelStyle = lipgloss.NewStyle().Bold(true).Foreground(ColorBg).Background(ColorAccent)
 
 	// Selection indicator
@@ -521,19 +528,16 @@ func initStyles() {
 	GroupHotkeySelStyle = lipgloss.NewStyle().Bold(true).Foreground(ColorBg).Background(ColorAccent)
 
 	// ToolStyleCache - reinitialize with current theme colors
-	ToolStyleCache = map[string]lipgloss.Style{
-		"claude":   lipgloss.NewStyle().Foreground(ColorOrange),
-		"gemini":   lipgloss.NewStyle().Foreground(ColorPurple),
-		"codex":    lipgloss.NewStyle().Foreground(ColorCyan),
-		"copilot":  lipgloss.NewStyle().Foreground(ColorAccent),
-		"hermes":   lipgloss.NewStyle().Foreground(ColorYellow),
-		"deepseek": lipgloss.NewStyle().Foreground(ColorCyan),
-		"pi":       lipgloss.NewStyle().Foreground(ColorAccent),
-		"aider":    lipgloss.NewStyle().Foreground(ColorRed),
-		"cursor":   lipgloss.NewStyle().Foreground(ColorAccent),
-		"shell":    lipgloss.NewStyle().Foreground(ColorText),
-		"opencode": lipgloss.NewStyle().Foreground(ColorText),
-		"crush":    lipgloss.NewStyle().Foreground(ColorPurple),
+	// Built from ToolColor so session list + picker share one palette.
+	ToolStyleCache = map[string]lipgloss.Style{}
+	for _, name := range []string{
+		"claude", "grok", "agy", "gemini", "codex",
+		"ornith", "penlight", "local-ornith", "local-penlight",
+		"oll-light", "oll-mid", "oll-heavy", "oll-hard-heavy", "oll-vision", "oll-pro",
+		"wk-glm", "wk-granite", "wk-kimi-code", "wk-m3",
+		"copilot", "crush", "hermes", "deepseek", "pi", "opencode", "aider", "cursor", "shell",
+	} {
+		ToolStyleCache[name] = lipgloss.NewStyle().Foreground(ToolColor(name))
 	}
 
 	// DefaultToolStyle
@@ -595,9 +599,10 @@ func StatusIndicator(status string) string {
 // ToolIcon returns the icon for a given tool
 // Checks user config for custom tools first, then falls back to built-ins
 func ToolIcon(tool string) string {
-	// Use session.GetToolIcon which handles custom + built-in
-	// Import would be circular, so we duplicate the logic here
-	// Custom icons are handled by the session layer's GetToolDef
+	// Custom [tools.*] icons from config.toml
+	if def := session.GetToolDef(tool); def != nil && def.Icon != "" {
+		return def.Icon
+	}
 	switch tool {
 	case "claude":
 		return IconClaude
@@ -608,11 +613,11 @@ func ToolIcon(tool string) string {
 	case "codex":
 		return IconCodex
 	case "copilot":
-		return "🐙"
+		return "⌘"
 	case "crush":
-		return "💘"
+		return "♥"
 	case "cursor":
-		return "📝"
+		return "▭"
 	case "hermes":
 		return "☤"
 	case "deepseek":
@@ -622,48 +627,67 @@ func ToolIcon(tool string) string {
 	case "shell":
 		return IconShell
 	default:
-		return IconShell
+		return session.GetToolIcon(tool)
 	}
 }
 
-// ToolColor returns the brand color for a given tool
-// Claude=orange (Anthropic), Gemini=purple (Google AI), Codex=cyan, Pi=accent, Aider=red
+// ToolColor returns the brand color for a given tool.
+// House palette (avicenna): family hues at uniform soft intensity ≈ penlight
+// sage #7a9f72 (mid L, low-mid S on dark Tokyo Night). See
+// ~/cloud/sync/system/agent-deck-tool-palette.md
+// Custom tools: [tools.X].color if set, else name-prefix heuristics.
 func ToolColor(tool string) lipgloss.Color {
+	if c := session.GetToolColor(tool); c != "" {
+		return lipgloss.Color(c)
+	}
+	// Flat colors per category (no within-family shade ladders).
 	switch tool {
 	case "claude":
-		return ColorOrange // Anthropic's orange
-	case "gemini":
-		return ColorPurple // Google AI purple
-	case "codex":
-		return ColorCyan // Light blue for OpenAI
-	case "copilot":
-		return ColorAccent // Blue for GitHub Copilot
-	case "crush":
-		return ColorPurple // Pink/magenta for Charm Crush
-	case "cursor":
-		return ColorAccent // Blue for Cursor
-	case "hermes":
-		return ColorYellow // Gold for Hermes Agent
-	case "deepseek":
-		return ColorCyan // DeepSeek Harness
-	case "pi":
-		return ColorAccent
-	case "aider":
-		return ColorRed // Red for Aider
+		return lipgloss.Color("#c07a58")
+	case "grok":
+		return lipgloss.Color("#c4b05c")
+	case "agy", "antigravity", "gemini":
+		// Google pair — shared agy purple
+		return lipgloss.Color("#9370db")
+	case "codex", "copilot":
+		// Codex steel / cloud-blue-gray (copilot shares)
+		return lipgloss.Color("#7a9bab")
+	case "crush", "hermes", "deepseek", "pi", "opencode", "cursor", "aider":
+		// Barely-used cluster — hermes gray
+		return lipgloss.Color("#8a9098")
+	case "shell":
+		// Former aider gray — slightly lighter end-of-list pop
+		return lipgloss.Color("#b4b8bc")
+	case "ornith", "local-ornith", "penlight", "local-penlight":
+		// Local pair — shared ornith green
+		return lipgloss.Color("#6c9e6a")
 	default:
-		return ColorTextDim // Default gray
+		switch {
+		case strings.HasPrefix(tool, "oll-"):
+			// All Ollama cloud grades — shared oll-hard-heavy
+			return lipgloss.Color("#4a94a6")
+		case strings.HasPrefix(tool, "wk-"):
+			// All Wunderkind — shared wk-kimi-code blue
+			return lipgloss.Color("#5a8cc8")
+		case strings.HasPrefix(tool, "local-"):
+			return lipgloss.Color("#6c9e6a")
+		default:
+			return ColorTextDim
+		}
 	}
 }
 
 // GetToolStyle returns cached style for tool or default.
 // Read-locked to protect against concurrent map access during live theme switches.
+// Unknown/custom tools get a live ToolColor() style so house fleets stay scannable.
 func GetToolStyle(tool string) lipgloss.Style {
 	themeMu.RLock()
 	defer themeMu.RUnlock()
 	if style, ok := ToolStyleCache[tool]; ok {
 		return style
 	}
-	return DefaultToolStyle
+	// Dynamic style for custom tools (not in static cache)
+	return lipgloss.NewStyle().Foreground(ToolColor(tool))
 }
 
 // RenderLogoIndicator renders a single indicator with appropriate color

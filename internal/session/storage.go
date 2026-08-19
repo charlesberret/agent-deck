@@ -1555,6 +1555,9 @@ func (s *Storage) convertToInstances(data *StorageData) ([]*Instance, []*GroupDa
 			})
 		}
 
+		// Promote schema-default error seats that never launched (LastStartedAt zero).
+		inst.NormalizeNeverStartedStatus()
+
 		// Set tmux option overrides so EnsureConfigured/ConfigureStatusBar
 		// respects user-defined keys (e.g. status = "2" for multi-line bar).
 		if tmuxSess != nil {

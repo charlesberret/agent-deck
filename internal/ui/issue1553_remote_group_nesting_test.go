@@ -197,3 +197,109 @@ func TestIssue1553_IntegrationThroughRebuild(t *testing.T) {
 		t.Errorf("sub-group header render missing subtree count (2): %q", out)
 	}
 }
+
+// TestRemoteGroupExpandCollapse pins fold behavior for remotes/* headers:
+// collapsing a host or sub-group hides descendants; re-expanding restores them.
+func TestRemoteGroupExpandCollapse(t *testing.T) {
+	sessions := []session.RemoteSessionInfo{
+		{ID: "a", Title: "api-1", Group: "work", Status: "running"},
+		{ID: "b", Title: "api-2", Group: "work/api", Status: "idle"},
+		{ID: "c", Title: "loose", Group: "", Status: "waiting"},
+	}
+
+	// Host collapsed → header only.
+	items := buildRemoteFlatItems("dev", sessions, map[string]bool{"remotes/dev": true})
+	if len(items) != 1 || items[0].Path != "remotes/dev" {
+		t.Fatalf("collapsed host: got %d items (%+v), want only remotes/dev header", len(items), items)
+	}
+
+	// Sub-group "work" collapsed → work header present, no work/api or work sessions.
+	items = buildRemoteFlatItems("dev", sessions, map[string]bool{"remotes/dev/work": true})
+	headerPaths := map[string]bool{}
+	for _, it := range items {
+		if it.Type == session.ItemTypeRemoteGroup {
+			headerPaths[it.Path] = true
+		}
+		if it.Type == session.ItemTypeRemoteSession && it.RemoteSession != nil {
+			if it.RemoteSession.ID == "a" || it.RemoteSession.ID == "b" {
+				t.Errorf("session %q should be hidden under collapsed work", it.RemoteSession.ID)
+			}
+		}
+		if it.Type == session.ItemTypeRemoteGroup && it.Path == "remotes/dev/work/api" {
+			t.Error("work/api header should not appear under collapsed work")
+		}
+	}
+	if !headerPaths["remotes/dev"] {
+		t.Error("missing host header")
+	}
+	if !headerPaths["remotes/dev/work"] {
+		t.Error("missing collapsed work header")
+	}
+	// Ungrouped session under my-sessions still visible.
+	foundLoose := false
+	for _, it := range items {
+		if it.Type == session.ItemTypeRemoteSession && it.RemoteSession != nil && it.RemoteSession.ID == "c" {
+			foundLoose = true
+		}
+	}
+	if !foundLoose {
+		t.Error("ungrouped session c should still show when only work is collapsed")
+	}
+}
+
+// TestRemoteGroupToggleThroughHome wires expand state through rebuildFlatItems
+// and enter-style toggle helpers.
+func TestRemoteGroupToggleThroughHome(t *testing.T) {
+	home := NewHome()
+	home.width = 100
+	home.height = 40
+	home.refreshSessionRenderSnapshot(nil)
+
+	home.remoteSessionsMu.Lock()
+	home.remoteSessions = map[string][]session.RemoteSessionInfo{
+		"dev": {
+			{ID: "a", Title: "api-1", Group: "work", Tool: "claude", Status: "running", RemoteName: "dev"},
+			{ID: "b", Title: "api-2", Group: "work/api", Tool: "claude", Status: "idle", RemoteName: "dev"},
+		},
+	}
+	home.remoteSessionsMu.Unlock()
+	home.rebuildFlatItems()
+
+	before := len(remoteItemsOf(home.flatItems))
+	if before < 4 {
+		t.Fatalf("expected nested remotes before collapse, got %d items", before)
+	}
+
+	// Collapse host.
+	home.setRemoteExpanded("remotes/dev", false)
+	home.rebuildFlatItems()
+	rem := remoteItemsOf(home.flatItems)
+	if len(rem) != 1 || rem[0].Path != "remotes/dev" {
+		t.Fatalf("after host collapse: got %d remote items, want 1 host header", len(rem))
+	}
+
+	// Toggle expands again.
+	home.toggleRemoteGroupAtCursor("remotes/dev")
+	rem = remoteItemsOf(home.flatItems)
+	if len(rem) < 4 {
+		t.Fatalf("after toggle expand: got %d remote items, want nested tree again", len(rem))
+	}
+
+	// Glyph reflects state.
+	var b strings.Builder
+	home.setRemoteExpanded("remotes/dev", false)
+	home.renderRemoteGroupItem(&b, session.Item{
+		Type: session.ItemTypeRemoteGroup, RemoteName: "dev", Path: "remotes/dev", Level: 0,
+	}, false)
+	if !strings.Contains(b.String(), "▸") {
+		t.Errorf("collapsed host glyph want ▸, got %q", b.String())
+	}
+	b.Reset()
+	home.setRemoteExpanded("remotes/dev", true)
+	home.renderRemoteGroupItem(&b, session.Item{
+		Type: session.ItemTypeRemoteGroup, RemoteName: "dev", Path: "remotes/dev", Level: 0,
+	}, false)
+	if !strings.Contains(b.String(), "▾") {
+		t.Errorf("expanded host glyph want ▾, got %q", b.String())
+	}
+}

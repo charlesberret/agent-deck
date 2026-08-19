@@ -433,16 +433,28 @@ func TestDisplayCommandPreset(t *testing.T) {
 func TestDialogPresetCommands(t *testing.T) {
 	d := NewNewDialog()
 
-	// Should have shell (empty), claude, gemini, opencode, codex, pi, copilot, crush, cursor, hermes, deepseek
-	expectedCommands := []string{"", "claude", "gemini", "opencode", "codex", "pi", "copilot", "crush", "cursor", "hermes", "deepseek"}
-
-	if len(d.presetCommands) != len(expectedCommands) {
-		t.Errorf("Expected %d preset commands, got %d", len(expectedCommands), len(d.presetCommands))
+	// House order (local/avicenna): daily drivers first, shell last ("").
+	// Custom tools from config may interleave after drivers; exact set varies by host.
+	if len(d.presetCommands) == 0 {
+		t.Fatal("presetCommands should not be empty")
 	}
-
-	for i, cmd := range expectedCommands {
-		if d.presetCommands[i] != cmd {
-			t.Errorf("presetCommands[%d] = %s, want %s", i, d.presetCommands[i], cmd)
+	if d.presetCommands[len(d.presetCommands)-1] != "" {
+		t.Errorf("shell (\"\") should be last, got %q at end: %v",
+			d.presetCommands[len(d.presetCommands)-1], d.presetCommands)
+	}
+	// claude should appear before rarely-used opencode when both present
+	idx := map[string]int{}
+	for i, c := range d.presetCommands {
+		if _, ok := idx[c]; !ok {
+			idx[c] = i
+		}
+	}
+	if iClaude, okC := idx["claude"]; okC {
+		if iOpen, okO := idx["opencode"]; okO && iClaude > iOpen {
+			t.Errorf("claude (i=%d) should precede opencode (i=%d)", iClaude, iOpen)
+		}
+		if iShell, okS := idx[""]; okS && iClaude > iShell {
+			t.Errorf("claude should precede shell")
 		}
 	}
 }
@@ -451,7 +463,14 @@ func TestDialogGetValues(t *testing.T) {
 	d := NewNewDialog()
 	d.nameInput.SetValue("my-session")
 	d.pathInput.SetValue("/tmp/project")
-	d.commandCursor = 1 // claude
+	// House picker order puts claude first (not at index 1 after shell).
+	d.commandCursor = 0
+	for i, cmd := range d.presetCommands {
+		if cmd == "claude" {
+			d.commandCursor = i
+			break
+		}
+	}
 
 	name, path, command := d.GetValues()
 

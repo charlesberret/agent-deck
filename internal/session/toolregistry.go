@@ -462,19 +462,12 @@ func ConfiguredHiddenToolNames() []string {
 	return currentRegistry().HiddenToolNames()
 }
 
-// pickerPresetOrder matches buildPresetCommands in internal/ui/newdialog.go.
-var pickerPresetOrder = []string{"", "claude", "gemini", "opencode", "codex", "pi", "copilot", "crush", "cursor", "hermes", "deepseek"}
 
 // PickerToolNames returns tool names for the new-session picker after applying
 // hidden_tools and show_only_installed_tools. The empty command "" is mapped
-// to "shell" for web consumers.
+// to "shell" for web consumers. Order matches BuildPickerPresets (house preference).
 func PickerToolNames() []string {
-	r := currentRegistry()
-	presets := append([]string{}, pickerPresetOrder...)
-	if custom := r.CustomNames(); len(custom) > 0 {
-		presets = append(presets, custom...)
-	}
-	filtered := r.FilterVisibleNames(presets)
+	filtered := currentRegistry().BuildPickerPresets()
 	out := make([]string, 0, len(filtered))
 	for _, name := range filtered {
 		if name == "" {

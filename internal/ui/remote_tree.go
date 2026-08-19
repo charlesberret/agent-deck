@@ -320,3 +320,31 @@ func remoteHeaderCounts(remoteName string, sessions []session.RemoteSessionInfo)
 	}
 	return counts
 }
+
+// collectRemoteGroupPaths returns the host path plus every intermediate and
+// leaf group-header path implied by the sessions' Group fields. Used by
+// expand/collapse-all so every known remote node gets a state entry.
+func collectRemoteGroupPaths(remoteName string, sessions []session.RemoteSessionInfo) []string {
+	host := "remotes/" + remoteName
+	seen := map[string]bool{host: true}
+	out := []string{host}
+	for i := range sessions {
+		gp := normalizeRemoteGroupPath(sessions[i].Group)
+		segments := strings.Split(gp, "/")
+		prefix := ""
+		for _, seg := range segments {
+			if prefix == "" {
+				prefix = seg
+			} else {
+				prefix = prefix + "/" + seg
+			}
+			full := host + "/" + prefix
+			if seen[full] {
+				continue
+			}
+			seen[full] = true
+			out = append(out, full)
+		}
+	}
+	return out
+}

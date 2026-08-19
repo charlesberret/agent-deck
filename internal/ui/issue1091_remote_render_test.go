@@ -49,13 +49,13 @@ func TestIssue1091_RemoteSession_ToolColorMatchesLocal(t *testing.T) {
 	home.renderRemoteSessionItem(&b, item, false)
 	rendered := b.String()
 
-	// What a local claude session would render for the " claude" tool label.
-	expectedToolLabel := GetToolStyle("claude").Render(" claude")
-	// What the buggy implementation rendered (gray DimStyle).
+	// Brand icon (▣) in tool style — same as local renderToolBadge path.
+	expectedToolLabel := renderToolBadge("claude", GetToolStyle("claude"))
+	// What the buggy implementation rendered (gray DimStyle + bare name).
 	dimToolLabel := DimStyle.Render(" claude")
 
 	if !strings.Contains(rendered, expectedToolLabel) {
-		t.Fatalf("remote claude session must render tool label with GetToolStyle(\"claude\") (orange) "+
+		t.Fatalf("remote claude session must render tool badge with GetToolStyle(\"claude\") (orange) "+
 			"to match local renderSessionItem.\n"+
 			"want substring: %q\n"+
 			"got rendered:   %q",
@@ -104,9 +104,9 @@ func TestIssue1091_RemoteSession_ToolColorAllTools(t *testing.T) {
 			home.renderRemoteSessionItem(&b, item, false)
 			rendered := b.String()
 
-			expectedToolLabel := GetToolStyle(tool).Render(" " + tool)
+			expectedToolLabel := renderToolBadge(tool, GetToolStyle(tool))
 			if !strings.Contains(rendered, expectedToolLabel) {
-				t.Fatalf("remote %s session must render tool label with GetToolStyle(%q).\n"+
+				t.Fatalf("remote %s session must render tool badge with GetToolStyle(%q).\n"+
 					"want substring: %q\n"+
 					"got rendered:   %q",
 					tool, tool, expectedToolLabel, rendered)
@@ -143,9 +143,9 @@ func TestIssue1091_RemoteSession_SelectedStateUnchanged(t *testing.T) {
 	home.renderRemoteSessionItem(&b, item, true) // selected=true
 	rendered := b.String()
 
-	expectedToolLabel := SessionStatusSelStyle.Render(" claude")
+	expectedToolLabel := renderToolBadge("claude", SessionStatusSelStyle)
 	if !strings.Contains(rendered, expectedToolLabel) {
-		t.Fatalf("selected remote claude session must render tool label with SessionStatusSelStyle.\n"+
+		t.Fatalf("selected remote claude session must render tool badge with SessionStatusSelStyle.\n"+
 			"want substring: %q\n"+
 			"got rendered:   %q",
 			expectedToolLabel, rendered)

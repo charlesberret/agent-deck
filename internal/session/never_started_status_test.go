@@ -33,8 +33,9 @@ func TestUpdateStatus_NeverStartedSessionIsIdleNotError(t *testing.T) {
 	got := inst.GetStatusThreadSafe()
 	assert.NotEqual(t, StatusError, got,
 		"a session that was added but never started must not show error")
-	assert.Equal(t, StatusIdle, got,
-		"a never-started session should remain idle")
+	// Prefer never_started over idle: idle means "was live, now at rest".
+	assert.Equal(t, StatusNeverStarted, got,
+		"a never-started session should report never_started (not idle)")
 }
 
 // A started-then-lost session must still surface as error: gating on

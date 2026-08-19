@@ -492,15 +492,14 @@ func (d *EditSessionDialog) View() string {
 	return lipgloss.Place(d.width, d.height, lipgloss.Center, lipgloss.Center, dialog)
 }
 
-// renderLabelPills renders a row of plain-text pills (no tool icons) for
-// fields whose options are simple labels, e.g. the pin position. Visual
-// styling matches renderToolPills so the two pill kinds read identically.
+// renderLabelPills renders plain-text pills (no tool icons) for fields whose
+// options are simple labels, e.g. the pin position. Wraps at pill boundaries.
 func renderLabelPills(labels []string, cursor int) string {
 	if len(labels) == 0 {
 		return ""
 	}
-	selected := lipgloss.NewStyle().Foreground(ColorBg).Background(ColorAccent).Bold(true).Padding(0, 2)
-	idle := lipgloss.NewStyle().Foreground(ColorTextDim).Background(ColorSurface).Padding(0, 2)
+	selected := lipgloss.NewStyle().Foreground(ColorBg).Background(ColorAccent).Bold(true).Padding(0, 1)
+	idle := lipgloss.NewStyle().Foreground(ColorTextDim).Background(ColorSurface).Padding(0, 1)
 	buttons := make([]string, len(labels))
 	for i, label := range labels {
 		if i == cursor {
@@ -509,17 +508,17 @@ func renderLabelPills(labels []string, cursor int) string {
 			buttons[i] = idle.Render(label)
 		}
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Left, buttons...)
+	// Edit dialog default width is 60; match new-session inner budget.
+	return joinPillsFlow(buttons, pillsInnerWidth(60))
 }
 
-// renderToolPills mirrors newdialog's command pills (selected =
-// ColorAccent background) so the new/edit pair feels visually identical.
+// renderToolPills mirrors newdialog's command pills (brand ToolColor
+// background when selected, ToolColor foreground when idle). Wraps at pill
+// boundaries so dialog Width never splits a tool name mid-entry.
 func renderToolPills(presets []string, cursor int) string {
 	if len(presets) == 0 {
 		return ""
 	}
-	selected := lipgloss.NewStyle().Foreground(ColorBg).Background(ColorAccent).Bold(true).Padding(0, 2)
-	idle := lipgloss.NewStyle().Foreground(ColorTextDim).Background(ColorSurface).Padding(0, 2)
 	buttons := make([]string, len(presets))
 	for i, cmd := range presets {
 		name := cmd
@@ -527,15 +526,21 @@ func renderToolPills(presets []string, cursor int) string {
 			name = "shell"
 		} else {
 			name = displayCommandPreset(cmd)
-			if def := session.GetToolDef(cmd); def != nil && def.Icon != "" {
-				name = def.Icon + " " + name
-			}
 		}
+		// Brand icon + color (same scannability as newdialog tool row)
+		icon := ToolIcon(name)
+		if cmd == "" {
+			icon = ToolIcon("shell")
+		}
+		label := icon + " " + name
+		tc := ToolColor(name)
+		var btn lipgloss.Style
 		if i == cursor {
-			buttons[i] = selected.Render(name)
+			btn = lipgloss.NewStyle().Foreground(ColorBg).Background(tc).Bold(true).Padding(0, 1)
 		} else {
-			buttons[i] = idle.Render(name)
+			btn = lipgloss.NewStyle().Foreground(tc).Background(ColorSurface).Padding(0, 1)
 		}
+		buttons[i] = btn.Render(label)
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Left, buttons...)
+	return joinPillsFlow(buttons, pillsInnerWidth(60))
 }
