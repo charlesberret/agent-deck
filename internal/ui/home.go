@@ -348,6 +348,12 @@ type Home struct {
 	previewCacheMu    sync.RWMutex         // Protects previewCache for thread-safety
 	previewFetchingID string               // ID currently being fetched (prevents duplicate fetches)
 
+	// Hesiod GPU occupancy (gpu-board --for TAG). TTL cache; fetch is async.
+	gpuBoardCache    map[string]string
+	gpuBoardTime     map[string]time.Time
+	gpuBoardFetching string
+	gpuBoardMu       sync.RWMutex
+
 	// Preview debouncing (PERFORMANCE: prevents subprocess spawn on every keystroke)
 	// During rapid navigation, we delay preview fetch by 150ms to let navigation settle
 	pendingPreviewKey string     // Preview key waiting for debounced fetch
@@ -2001,6 +2007,8 @@ func NewHomeWithProfileAndMode(profile string) *Home {
 		flatItems:                 []session.Item{},
 		previewCache:              make(map[string]string),
 		previewCacheTime:          make(map[string]time.Time),
+		gpuBoardCache:             make(map[string]string),
+		gpuBoardTime:              make(map[string]time.Time),
 		analyticsCache:            make(map[string]*session.SessionAnalytics),
 		geminiAnalyticsCache:      make(map[string]*session.GeminiSessionAnalytics),
 		analyticsCacheTime:        make(map[string]time.Time),
@@ -8893,6 +8901,20 @@ func (h *Home) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if needsPreviewFetch {
 				cmds = append(cmds, h.fetchRemotePreview(msg.remoteName, msg.sessionID, msg.previewKey))
 			}
+			h.remoteSessionsMu.RLock()
+			var remoteTool string
+			if sess, ok := h.remoteSessions[msg.remoteName]; ok {
+				for i := range sess {
+					if sess[i].ID == msg.sessionID {
+						remoteTool = sess[i].Tool
+						break
+					}
+				}
+			}
+			h.remoteSessionsMu.RUnlock()
+			if cmd := h.maybeFetchGpuBoard(remoteTool); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 
 			if len(cmds) > 0 {
 				return h, tea.Batch(cmds...)
@@ -8919,9 +8941,13 @@ func (h *Home) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, h.fetchPreview(inst, msg.previewKey, msg.windowIndex))
 			}
 
+			tickTool := inst.GetToolThreadSafe()
+			if cmd := h.maybeFetchGpuBoard(tickTool); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+
 			// Analytics fetch (for Claude/Gemini sessions with analytics enabled)
 			// Use TTL cache - only fetch if cache miss/expired and not already fetching
-			tickTool := inst.GetToolThreadSafe()
 			if (tickTool == "claude" || tickTool == "gemini") && h.analyticsFetchingID != inst.ID {
 				switch tickTool {
 				case "claude":
@@ -8995,6 +9021,10 @@ func (h *Home) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return h, tea.Batch(cmds...)
 			}
 		}
+		return h, nil
+
+	case gpuBoardFetchedMsg:
+		h.applyGpuBoardFetched(msg)
 		return h, nil
 
 	case previewFetchedMsg:
@@ -20341,6 +20371,9 @@ func (h *Home) renderRemotePreview(item session.Item, width, height int) string 
 	if rs.Tool != "" {
 		b.WriteString(dimStyle.Render("Tool:    ") + rs.Tool + "\n")
 	}
+	if gpu := h.gpuBoardLine(rs.Tool); gpu != "" {
+		b.WriteString(renderGpuBoardLine(gpu) + "\n")
+	}
 	if rs.Group != "" {
 		b.WriteString(dimStyle.Render("Group:   ") + rs.Group + "\n")
 	}
@@ -21115,6 +21148,10 @@ func (h *Home) renderPreviewPane(width, height int) string {
 	pathStr := truncatePath(selected.ProjectPath, width-4)
 	b.WriteString(infoStyle.Render("📁 " + pathStr))
 	b.WriteString("\n")
+	if gpu := h.gpuBoardLine(selected.GetToolThreadSafe()); gpu != "" {
+		b.WriteString(renderGpuBoardLine(gpu))
+		b.WriteString("\n")
+	}
 
 	// Activity time - shows when session was last active. Composed with
 	// sessionActivityTime — the SAME formula as the row badge (issue #1846:
