@@ -59,7 +59,8 @@ func TestTrustSubjectClass_FleetPaths(t *testing.T) {
 		{[]string{"cloud", "sync", "career"}, SubjectPersonal},
 		{[]string{"cloud", "git-projects", "kettle-core"}, SubjectProjectIP},
 		{[]string{"cloud", "sync", "projects", "Active"}, SubjectProjectIP},
-		{[]string{"cloud", "sync", "system"}, SubjectInternal},
+		{[]string{"cloud", "sync", "system"}, SubjectPersonal}, // holds contacts.md
+		{[]string{"cloud", "sync", "system", "runbooks"}, SubjectInternal},
 		{[]string{"cloud", "sync", "metawork"}, SubjectInternal},
 		{[]string{"cloud", "sync", "code", "bin"}, SubjectInternal},
 	}
@@ -81,9 +82,14 @@ func TestTrustSubjectClass_SpecificRulesBeatBroadOnes(t *testing.T) {
 	if got := TrustSubjectClass(contacts); got != SubjectPersonal {
 		t.Errorf("contacts.md = %v, want personal (system/** must not shadow it)", got)
 	}
+	// system/ holds contacts.md, so a seat rooted there inherits personal.
 	sys := homeJoin(t, "cloud", "sync", "system")
-	if got := TrustSubjectClass(sys); got != SubjectInternal {
-		t.Errorf("system/ = %v, want internal", got)
+	if got := TrustSubjectClass(sys); got != SubjectPersonal {
+		t.Errorf("system/ = %v, want personal (contains contacts.md)", got)
+	}
+	// A system/ subdirectory that holds nothing sensitive stays internal.
+	if got := TrustSubjectClass(homeJoin(t, "cloud", "sync", "system", "runbooks")); got != SubjectInternal {
+		t.Errorf("system/runbooks = %v, want internal", got)
 	}
 
 	interviews := homeJoin(t, "cloud", "sync", "notes", "interviews")
@@ -105,6 +111,7 @@ func TestTrustSubjectClass_SpecificRulesBeatBroadOnes(t *testing.T) {
 // Register A: a seat takes the max class of the trees it can read. A container
 // cwd must not read as safer than what sits beneath it -- ~ reaches keys/ and
 // OfficialDocs, and 5 live vendor sessions sat there unmarked before this.
+// Containment is COMPUTED, so this holds for containers nobody listed.
 func TestTrustSubjectClass_ContainersInheritMax(t *testing.T) {
 	useFleetRegistry(t)
 
@@ -178,19 +185,25 @@ func TestTrustFlag_OrdinaryWorkIsUnflagged(t *testing.T) {
 	if got := TrustFlag("claude", repo); got != "" {
 		t.Errorf("TrustFlag(claude, git-project) = %q, want no flag (W3 rides the ☁)", got)
 	}
-	sys := homeJoin(t, "cloud", "sync", "system")
-	if got := TrustFlag("claude", sys); got != "" {
-		t.Errorf("TrustFlag(claude, system) = %q, want no flag (editing system/ is the job)", got)
+	runbooks := homeJoin(t, "cloud", "sync", "system", "runbooks")
+	if got := TrustFlag("claude", runbooks); got != "" {
+		t.Errorf("TrustFlag(claude, system/runbooks) = %q, want no flag (ops work is the job)", got)
 	}
 }
 
-// The unscoped shell seat is the one standing over-privilege the row should
-// keep showing — register: "always ! until scoped".
-func TestTrustFlag_UnscopedShellIsFlagged(t *testing.T) {
+// W1 is not painted on the row: narrowed to `destructive` it was a synonym
+// for "tool == shell", constant across every directory, and the shell row
+// already carries "!" from its egress glyph. The mark must vary with the
+// session or the eye trains off it.
+func TestTrustFlag_ShellNotDoubleMarked(t *testing.T) {
 	useFleetRegistry(t)
 
-	if got := TrustFlag("shell", homeJoin(t, "cloud", "sync", "system")); got != trustFlagOverprivilege {
-		t.Errorf("TrustFlag(shell, system) = %q, want %q", got, trustFlagOverprivilege)
+	if got := TrustFlag("shell", homeJoin(t, "cloud", "sync", "code")); got != "" {
+		t.Errorf("TrustFlag(shell, code) = %q, want no flag (egress ! already says unbounded)", got)
+	}
+	// It is still blocked where the subject genuinely exceeds the ceiling.
+	if got := TrustFlag("claude", homeJoin(t, "cloud", "sync", "keys")); got != trustFlagBlocked {
+		t.Errorf("claude on keys = %q, want %q", got, trustFlagBlocked)
 	}
 }
 
@@ -213,11 +226,14 @@ func TestTrustFlag_UnknownRetentionStillGatesAsVendor(t *testing.T) {
 	}
 }
 
-func TestTrustFlag_UnknownToolIsSilent(t *testing.T) {
+// An unregistered tool must NOT be silent. trust_egress.go still paints ☁ for
+// bt-*/wk-*/oll-* by prefix heuristic, so a blank flag would leave the row
+// looking evaluated when nothing evaluated it.
+func TestTrustFlag_UnknownToolIsMarkedUnclassified(t *testing.T) {
 	useFleetRegistry(t)
 
-	if got := TrustFlag("some-unregistered-tool", homeJoin(t, "cloud", "sync", "keys")); got != "" {
-		t.Errorf("unknown tool = %q, want silent (no false assurance either way)", got)
+	if got := TrustFlag("some-unregistered-tool", homeJoin(t, "cloud", "sync", "keys")); got != trustFlagUnclassified {
+		t.Errorf("unknown tool = %q, want %q", got, trustFlagUnclassified)
 	}
 }
 
@@ -228,37 +244,110 @@ func TestRenderToolBadgeForPath_FlagsBlockedPairing(t *testing.T) {
 	style := GetToolStyle("claude")
 	keys := homeJoin(t, "cloud", "sync", "keys")
 
-	got := renderToolBadgeForPath("claude", keys, style)
+	got := renderToolBadgeForPath("claude", []string{keys}, style)
 	if !strings.Contains(got, trustFlagBlocked) {
 		t.Fatalf("expected %q in badge for claude on keys/, got %q", trustFlagBlocked, got)
 	}
 
 	repo := homeJoin(t, "cloud", "git-projects", "kettle-core")
-	plain := renderToolBadgeForPath("claude", repo, style)
-	if strings.Contains(plain, trustFlagBlocked) || strings.Contains(plain, trustFlagOverprivilege) {
+	plain := renderToolBadgeForPath("claude", []string{repo}, style)
+	if strings.Contains(plain, trustFlagBlocked) || strings.Contains(plain, trustFlagUnclassified) {
 		t.Fatalf("ordinary repo work must be unflagged, got %q", plain)
 	}
 	if plain != renderToolBadge("claude", style) {
 		t.Fatalf("unflagged badge must equal the plain badge; got %q", plain)
 	}
+
+	// An additional path into a personal tree must taint the whole session:
+	// the verdict is the max over every tree the seat can read.
+	career := homeJoin(t, "cloud", "sync", "career")
+	multi := renderToolBadgeForPath("claude", []string{repo, career}, style)
+	if !strings.Contains(multi, trustFlagBlocked) {
+		t.Fatalf("repo + career must flag on the worst path, got %q", multi)
+	}
 }
 
-func TestGlobMatch(t *testing.T) {
+// Everything the review found reachable-and-silent. Each of these rendered a
+// clean badge before, which on a row reads as "checked and clean".
+func TestTrustFlag_NoSilentPasses(t *testing.T) {
+	useFleetRegistry(t)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir")
+	}
+
 	cases := []struct {
-		pattern, path string
-		want          bool
+		name, tool, path, want string
 	}{
-		{"~/cloud/sync/keys/**", "~/cloud/sync/keys", true},
-		{"~/cloud/sync/keys/**", "~/cloud/sync/keys/wg.conf", true},
-		{"~/cloud/sync/keys/**", "~/cloud/sync/keysmith", false},
-		{"**/.env", "~/repo/.env", true},
-		{"**/.env", "~/repo/env", false},
-		{"**/*.pem", "~/a/b/cert.pem", true},
-		{"~/cloud/sync/system/contacts.md", "~/cloud/sync/system/contacts.md", true},
+		// Case-insensitive filesystem: this really resolves to keys/.
+		{"mis-cased tree", "claude", filepath.Join(home, "cloud/sync/KEYS"), trustFlagBlocked},
+		{"mis-cased home", "claude", "/Users/Charles/cloud/sync/keys", trustFlagBlocked},
+		// Remote linux home -- SSH rows carry the remote path.
+		{"linux home", "claude", "/home/charles/cloud/sync/keys", trustFlagBlocked},
+		{"linux container", "claude", "/home/charles", trustFlagBlocked},
+		// Configured deck tools that were absent from the registry.
+		{"unregistered bt seat", "bt-oll-heavy", filepath.Join(home, "cloud/sync/notes/interviews"), trustFlagBlocked},
+		// Named only in a surface's deck_tool_ids, with no tools: row -- the
+		// registry described it all along and it still rendered nothing.
+		{"deck_tool_ids-only tool", "codex", filepath.Join(home, "cloud/sync/keys"), trustFlagBlocked},
+		{"genuinely absent tool", "some-new-tool", filepath.Join(home, "cloud/sync/keys"), trustFlagUnclassified},
+		// Sensitive trees the first pass never listed.
+		{"wireguard keys", "claude", filepath.Join(home, ".config/wireguard"), trustFlagBlocked},
+		{"mega cold backup", "claude", filepath.Join(home, "MEGA"), trustFlagBlocked},
+		{"downloads", "claude", filepath.Join(home, "Downloads"), trustFlagBlocked},
 	}
 	for _, c := range cases {
-		if got := globMatch(c.pattern, c.path); got != c.want {
-			t.Errorf("globMatch(%q, %q) = %v, want %v", c.pattern, c.path, got, c.want)
+		if got := TrustFlag(c.tool, c.path); got != c.want {
+			t.Errorf("%s: TrustFlag(%s, %s) = %q, want %q", c.name, c.tool, c.path, got, c.want)
 		}
+	}
+}
+
+// A registry that will not load must not silently switch the control off --
+// trust_egress.go keeps painting glyphs from its builtin map, so the row would
+// look evaluated while nothing was evaluated.
+func TestTrustFlag_UnloadableRegistryIsLoud(t *testing.T) {
+	resetTrustSubjectForTest()
+	t.Cleanup(resetTrustSubjectForTest)
+
+	bad := filepath.Join(t.TempDir(), "broken.yaml")
+	if err := os.WriteFile(bad, []byte("surfaces: [oh: no: yes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AGENT_DECK_TRUST_REGISTRY", bad)
+
+	if got := TrustFlag("claude", "/anywhere"); got != trustFlagUnclassified {
+		t.Errorf("broken registry = %q, want %q", got, trustFlagUnclassified)
+	}
+}
+
+// A typo in `class:` must fail loud, not declassify the tree it names.
+func TestTrustSubject_BadClassFailsClosed(t *testing.T) {
+	resetTrustSubjectForTest()
+	t.Cleanup(resetTrustSubjectForTest)
+
+	reg := filepath.Join(t.TempDir(), "typo.yaml")
+	body := `
+surfaces:
+  - { id: v, provider_locus: vendor, retention: unknown, write_mode: mutate, subject_ceiling: project-ip }
+tools:
+  claude: { surface: v, egress: vendor, glyph: "x" }
+subject_paths:
+  default: project-ip
+  rules:
+    - { match: "~/cloud/sync/keys/**", class: credentials }
+`
+	if err := os.WriteFile(reg, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AGENT_DECK_TRUST_REGISTRY", reg)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir")
+	}
+	if got := TrustFlag("claude", filepath.Join(home, "cloud/sync/keys")); got == "" {
+		t.Error("typo'd class rendered a clean badge on keys/ — must never be silent")
 	}
 }

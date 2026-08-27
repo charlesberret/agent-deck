@@ -429,7 +429,6 @@ type Home struct {
 	// rules and remoteOrder for why the scoping is nested).
 	remoteSessionOrder remoteOrder
 
-
 	// Worktree dirty status cache (lazy, 10s TTL)
 	worktreeDirtyCache   map[string]bool      // sessionID -> isDirty
 	worktreeDirtyCacheTs map[string]time.Time // sessionID -> cache timestamp
@@ -6032,18 +6031,48 @@ func renderToolBadge(tool string, style lipgloss.Style) string {
 	return style.Render(" " + label)
 }
 
+// trustPathsFor returns every tree a session can reach, for the subject-match
+// flag. Register § A takes the max class over all of them, so a session with an
+// additional path into career/ must not be judged on its ProjectPath alone.
+//
+// An SSH session's ProjectPath is only a local placeholder, so the remote cwd
+// is the truthful one — and when that is empty (`agent-deck add --ssh host`
+// with no --remote-path) the session lands in the remote $HOME. Returning
+// nothing there would fall through to the default and render a clean badge on
+// exactly the container case the containment rule exists for; return the home
+// marker instead.
+func trustPathsFor(inst *session.Instance) []string {
+	if inst == nil {
+		return nil
+	}
+	if inst.IsSSH() {
+		if p := strings.TrimSpace(inst.SSHRemotePath); p != "" {
+			return []string{p}
+		}
+		return []string{"~"}
+	}
+	paths := inst.AllProjectPaths()
+	if wd := inst.EffectiveWorkingDir(); wd != "" {
+		paths = append(paths, wd)
+	}
+	return paths
+}
+
 // renderToolBadgeForPath is renderToolBadge plus the subject-match flag for a
-// session whose work lives at path — "is this provider right for this project"
-// (see trust_subject.go). Undecorated when the pairing is unremarkable, so a
-// visible flag stays worth reading. Callers without a real cwd (tmux-window
-// rows) should keep using renderToolBadge rather than pass a guess: a wrong
-// path yields a falsely reassuring badge.
-func renderToolBadgeForPath(tool, path string, style lipgloss.Style) string {
+// session working across paths — "is this provider right for this project"
+// (see trust_subject.go). Undecorated only when the pairing is genuinely
+// unremarkable; an unjudgeable one renders "?" rather than nothing, because on
+// a row an absent mark reads as reassurance.
+//
+// Callers without a real cwd (tmux-window rows) should keep using
+// renderToolBadge rather than pass a guess: a wrong path yields a falsely
+// reassuring badge.
+func renderToolBadgeForPath(tool string, paths []string, style lipgloss.Style) string {
 	badge := renderToolBadge(tool, style)
 	if badge == "" {
 		return ""
 	}
-	flag := TrustFlag(tool, path)
+	flag := TrustFlagForPaths(tool, paths)
 	if flag == "" {
 		return badge
 	}
@@ -20014,14 +20043,7 @@ func (h *Home) renderSessionItem(
 	}
 
 	// Brand icon only (⚡ not "grok") — color carries the identity.
-	// Path drives the subject-match flag: an SSH session's ProjectPath is a
-	// local placeholder, so classifying by it would describe the wrong tree
-	// (and usually the more permissive one). Use the real remote cwd.
-	trustPath := inst.EffectiveWorkingDir()
-	if inst.IsSSH() {
-		trustPath = inst.SSHRemotePath
-	}
-	tool := renderToolBadgeForPath(instTool, trustPath, toolStyle)
+	tool := renderToolBadgeForPath(instTool, trustPathsFor(inst), toolStyle)
 
 	// Supervisor badge for the maestro row.
 	maestroBadge := ""
