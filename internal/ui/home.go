@@ -6013,9 +6013,9 @@ func compactPaneSubtitle(sessionTitle, tool, groupPath, paneTitle string) string
 	return strings.Join(kept, " - ")
 }
 
-// renderToolBadge paints the brand icon for tool (⚡ ▣ ✦ …) in style.
-// Falls back to the bare tool name when no icon is registered — keeps
-// unknown custom tools readable without inventing a glyph.
+// renderToolBadge paints egress glyph (⌂/☁/!) + brand icon for tool in style.
+// Egress mark is trust posture (see trust_egress.go); brand icon/color stay
+// family identity. Falls back to the bare tool name when no icon is registered.
 func renderToolBadge(tool string, style lipgloss.Style) string {
 	if tool == "" {
 		return ""
@@ -6024,7 +6024,34 @@ func renderToolBadge(tool string, style lipgloss.Style) string {
 	if label == "" {
 		label = tool
 	}
+	if eg := TrustEgressGlyph(tool); eg != "" {
+		// Dim egress, then brand-colored icon — two signals, one column.
+		egStyled := lipgloss.NewStyle().Foreground(ColorTextDim).Render(eg)
+		return " " + egStyled + style.Render(label)
+	}
 	return style.Render(" " + label)
+}
+
+// renderToolBadgeForPath is renderToolBadge plus the subject-match flag for a
+// session whose work lives at path — "is this provider right for this project"
+// (see trust_subject.go). Undecorated when the pairing is unremarkable, so a
+// visible flag stays worth reading. Callers without a real cwd (tmux-window
+// rows) should keep using renderToolBadge rather than pass a guess: a wrong
+// path yields a falsely reassuring badge.
+func renderToolBadgeForPath(tool, path string, style lipgloss.Style) string {
+	badge := renderToolBadge(tool, style)
+	if badge == "" {
+		return ""
+	}
+	flag := TrustFlag(tool, path)
+	if flag == "" {
+		return badge
+	}
+	flagColor := ColorYellow
+	if flag == trustFlagBlocked {
+		flagColor = ColorRed
+	}
+	return badge + lipgloss.NewStyle().Foreground(flagColor).Bold(true).Render(flag)
 }
 
 func (h *Home) getSessionRenderSnapshot() map[string]sessionRenderState {
@@ -19987,7 +20014,14 @@ func (h *Home) renderSessionItem(
 	}
 
 	// Brand icon only (⚡ not "grok") — color carries the identity.
-	tool := renderToolBadge(instTool, toolStyle)
+	// Path drives the subject-match flag: an SSH session's ProjectPath is a
+	// local placeholder, so classifying by it would describe the wrong tree
+	// (and usually the more permissive one). Use the real remote cwd.
+	trustPath := inst.EffectiveWorkingDir()
+	if inst.IsSSH() {
+		trustPath = inst.SSHRemotePath
+	}
+	tool := renderToolBadgeForPath(instTool, trustPath, toolStyle)
 
 	// Supervisor badge for the maestro row.
 	maestroBadge := ""

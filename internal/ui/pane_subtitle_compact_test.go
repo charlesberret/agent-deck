@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -77,25 +78,27 @@ func stringsHasSuffixWord(s, word string) bool {
 
 func TestRenderToolBadge_IconNotName(t *testing.T) {
 	forceTrueColorProfile()
+	resetTrustEgressForTest()
+	t.Setenv("AGENT_DECK_TRUST_REGISTRY", filepath.Join(t.TempDir(), "missing.yaml"))
 	style := GetToolStyle("grok")
 	got := renderToolBadge("grok", style)
 	// Must not contain the bare word "grok" as the label (icon is ⚡).
-	// Style wraps the icon; strip is hard — just ensure ⚡ path via ToolIcon.
 	icon := ToolIcon("grok")
 	if icon == "" || icon == "grok" {
-		// config may supply ⚡; without config default GetToolIcon may still set something
 		t.Logf("ToolIcon(grok)=%q (config-dependent)", icon)
 	}
-	want := style.Render(" " + icon)
-	if icon != "" && got != want {
-		t.Fatalf("renderToolBadge(grok) = %q, want %q", got, want)
-	}
-	// Never render a leading space + full tool name when an icon exists.
 	if icon != "" && icon != "grok" {
+		if !containsAll(got, icon) {
+			t.Fatalf("renderToolBadge(grok) missing brand icon %q: %q", icon, got)
+		}
 		nameOnly := style.Render(" grok")
 		if got == nameOnly {
 			t.Fatal("tool badge still using bare tool name when icon is available")
 		}
+	}
+	// House trust mark: vendor egress before brand icon.
+	if !containsAll(got, "☁") {
+		t.Fatalf("renderToolBadge(grok) missing egress ☁: %q", got)
 	}
 }
 
