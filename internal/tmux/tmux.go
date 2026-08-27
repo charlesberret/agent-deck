@@ -29,6 +29,7 @@ import (
 	"github.com/asheshgoplani/agent-deck/internal/logging"
 	"github.com/asheshgoplani/agent-deck/internal/platform"
 	"github.com/asheshgoplani/agent-deck/internal/shellwords"
+	"github.com/asheshgoplani/agent-deck/internal/theme"
 	dark "github.com/thiagokokada/dark-mode-go"
 )
 
@@ -71,6 +72,11 @@ func resolvedAgentDeckTheme() string {
 			case "system", "":
 				// fall through to OS detection
 			default:
+				// House palettes (internal/theme) carry their own chrome;
+				// anything unrecognized still falls back to dark.
+				if theme.IsHouse(c.Theme) {
+					return c.Theme
+				}
 				return "dark"
 			}
 		}
@@ -102,7 +108,16 @@ func resolvedAgentDeckTheme() string {
 }
 
 func currentTmuxThemeStyle() tmuxThemeStyle {
-	if resolvedAgentDeckTheme() == "light" {
+	resolved := resolvedAgentDeckTheme()
+	if p, ok := theme.Get(resolved); ok {
+		return tmuxThemeStyle{
+			windowStyle:       p.TmuxWindowStyle,
+			windowActiveStyle: p.TmuxWindowStyle,
+			statusStyle:       "bg=" + p.TmuxStatusBg + ",fg=" + p.TmuxStatusFg,
+			hintColor:         p.TmuxHint,
+		}
+	}
+	if resolved == "light" {
 		return tmuxThemeStyle{
 			// Light terminals can still inherit a dark-looking tmux window background
 			// when we leave window-style at "default". Use an explicit neutral light

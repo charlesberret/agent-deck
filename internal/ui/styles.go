@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/asheshgoplani/agent-deck/internal/session"
+	"github.com/asheshgoplani/agent-deck/internal/theme"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -85,10 +86,17 @@ var themeMu sync.RWMutex
 
 // InitTheme sets the active color palette based on theme name
 // Must be called before any UI rendering
-func InitTheme(theme string) {
+func InitTheme(name string) {
 	themeMu.Lock()
 	defer themeMu.Unlock()
-	if theme == "light" {
+	// House palettes (internal/theme) come first: they are additive, so the
+	// built-in dark/light branches below stay exactly as upstream wrote them.
+	if p, ok := theme.Get(name); ok {
+		applyHousePalette(p)
+		initStyles()
+		return
+	}
+	if name == "light" {
 		currentTheme = ThemeLight
 		ColorBg = lightColors.Bg
 		ColorSurface = lightColors.Surface

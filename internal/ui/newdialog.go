@@ -3419,7 +3419,7 @@ func (d *NewDialog) View() string {
 // dropdownMenuBg returns a slightly elevated background color for floating menus.
 // Dark theme: one step brighter than Surface. Light theme: one step darker.
 func dropdownMenuBg() lipgloss.Color {
-	if currentTheme == ThemeLight {
+	if ThemeIsLight() {
 		return lipgloss.Color("#dcdde2")
 	}
 	return lipgloss.Color("#292e42")

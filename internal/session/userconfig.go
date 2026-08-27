@@ -25,6 +25,7 @@ import (
 	"github.com/asheshgoplani/agent-deck/internal/logging"
 	"github.com/asheshgoplani/agent-deck/internal/platform"
 	"github.com/asheshgoplani/agent-deck/internal/safeio"
+	"github.com/asheshgoplani/agent-deck/internal/theme"
 	"github.com/asheshgoplani/agent-deck/internal/tmux"
 )
 
@@ -65,7 +66,8 @@ type UserConfig struct {
 	// Set an action to "" to explicitly unbind it.
 	Hotkeys map[string]string `toml:"hotkeys,omitempty"`
 
-	// Theme sets the color scheme: "dark" (default), "light", or "system"
+	// Theme sets the color scheme: "dark" (default), "light", "system", or a
+	// house palette name from internal/theme ("wildcherry", "kettle").
 	Theme string `toml:"theme,omitempty"`
 
 	// Tools defines custom AI tool configurations
@@ -4060,9 +4062,12 @@ func GetTheme() string {
 	switch config.Theme {
 	case "dark", "light", "system":
 		return config.Theme
-	default:
-		return "dark"
 	}
+	// House palettes (internal/theme): valid theme names beyond the built-ins.
+	if theme.IsHouse(config.Theme) {
+		return config.Theme
+	}
+	return "dark"
 }
 
 // ResolveTheme resolves the configured theme to "dark" or "light".

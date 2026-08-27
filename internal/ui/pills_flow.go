@@ -71,3 +71,23 @@ func pillsInnerWidth(dialogWidth int) int {
 	}
 	return w
 }
+
+// radioGroupFlow renders a radio group that wraps between options instead of
+// overflowing the dialog. Same marker grammar as SettingsPanel.renderRadioGroup
+// (">" on the selection, accent + bold); the two trailing spaces that separate
+// options are baked into each entry so joinPillsFlow can break on them.
+func radioGroupFlow(options []string, selected, maxWidth int) string {
+	entries := make([]string, 0, len(options))
+	for i, opt := range options {
+		style := lipgloss.NewStyle().Foreground(ColorTextDim)
+		marker := " "
+		if i == selected {
+			style = lipgloss.NewStyle().Bold(true).Foreground(ColorAccent)
+			marker = ">"
+		}
+		entries = append(entries, style.Render(marker+opt)+"  ")
+	}
+	// Continuation rows are re-indented to match the caller's leading "  ";
+	// joinPillsFlow only knows about the first row's offset.
+	return strings.ReplaceAll(joinPillsFlow(entries, maxWidth), "\n", "\n  ")
+}

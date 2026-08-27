@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/asheshgoplani/agent-deck/internal/session"
+	"github.com/asheshgoplani/agent-deck/internal/theme"
 )
 
 // SettingType identifies which setting is being edited
@@ -130,11 +131,37 @@ var (
 	tierValues = []string{"auto", "instant", "balanced"}
 )
 
-// Theme names for radio selection
+// Theme names for radio selection. The three built-ins come first (their
+// indices are asserted by tests and by LoadConfig); house palettes from
+// internal/theme are appended in registry order.
 var (
-	themeNames  = []string{"Dark", "Light", "System"}
-	themeValues = []string{"dark", "light", "system"}
+	themeNames  = buildThemeNames()
+	themeValues = buildThemeValues()
 )
+
+func buildThemeNames() []string {
+	names := []string{"Dark", "Light", "System"}
+	for _, p := range theme.All() {
+		names = append(names, p.Display)
+	}
+	return names
+}
+
+func buildThemeValues() []string {
+	values := []string{"dark", "light", "system"}
+	values = append(values, theme.Names()...)
+	return values
+}
+
+// themeIndex returns the radio index for a configured theme value.
+func themeIndex(value string) int {
+	for i, v := range themeValues {
+		if v == value {
+			return i
+		}
+	}
+	return 0 // dark
+}
 
 // Stats format names for radio selection
 var (
@@ -226,14 +253,7 @@ func (s *SettingsPanel) SetProfile(profile string) {
 // LoadConfig populates panel values from a UserConfig
 func (s *SettingsPanel) LoadConfig(config *session.UserConfig) {
 	// Load theme
-	switch config.Theme {
-	case "light":
-		s.selectedTheme = 1
-	case "system":
-		s.selectedTheme = 2
-	default:
-		s.selectedTheme = 0
-	}
+	s.selectedTheme = themeIndex(config.Theme)
 
 	// Rebuild tool lists: built-ins + custom tools + "None".
 	s.buildToolLists(config)
@@ -854,11 +874,15 @@ func (s *SettingsPanel) View() string {
 		content.WriteString(warningStyle.Render(" (restart required)"))
 	}
 	content.WriteString("\n")
-	themeRow := s.renderRadioGroup(themeNames, s.selectedTheme, s.cursor == int(SettingTheme))
+	themeRow := radioGroupFlow(themeNames, s.selectedTheme, pillsInnerWidth(dialogWidth))
 	if s.cursor == int(SettingTheme) {
 		themeRow = highlightStyle.Render(themeRow)
 	}
-	content.WriteString("  " + themeRow + "\n\n")
+	content.WriteString("  " + themeRow + "\n")
+	if note := themeNoteFor(s.selectedTheme); note != "" {
+		content.WriteString(dimStyle.Render("  "+note) + "\n")
+	}
+	content.WriteString("\n")
 
 	// DEFAULT TOOL
 	content.WriteString(sectionStyle.Render("DEFAULT TOOL"))

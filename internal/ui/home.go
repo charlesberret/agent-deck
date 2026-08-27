@@ -22167,7 +22167,7 @@ func (h *Home) renderPreviewPane(width, height int) string {
 		consecutiveEmpty := 0
 		const maxConsecutiveEmpty = 2 // Allow up to 2 consecutive empty lines
 
-		isLightTheme := GetCurrentTheme() == ThemeLight
+		isLightTheme := ThemeIsLight()
 		for _, line := range lines {
 			// Strip dangerous control characters (\r, \b, etc.) but preserve
 			// ANSI escape sequences (ESC = 0x1b) so colors and formatting
