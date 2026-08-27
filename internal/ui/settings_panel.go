@@ -18,6 +18,7 @@ type SettingType int
 
 const (
 	SettingTheme SettingType = iota // Theme must be first (index 0)
+	SettingFooter
 	SettingDefaultTool
 	SettingDangerousMode
 	SettingClaudeConfigDir
@@ -54,7 +55,7 @@ const (
 )
 
 // Total number of navigable settings.
-const settingsCount = 34
+const settingsCount = 35
 
 // SettingsPanel displays and edits user configuration
 type SettingsPanel struct {
@@ -70,7 +71,8 @@ type SettingsPanel struct {
 	toolValues []string
 
 	// Setting values
-	selectedTheme       int // 0=dark, 1=light, 2=system
+	selectedTheme       int // index into themeValues
+	selectedFooter      int // index into footerValues
 	selectedTool        int // index into toolNames/toolValues
 	dangerousMode       bool
 	claudeConfigDir     string
@@ -161,6 +163,31 @@ func themeIndex(value string) int {
 		}
 	}
 	return 0 // dark
+}
+
+// Footer styles for radio selection. The values are the [ui].footer config
+// values; the descriptions are shown under the row because "curated" versus
+// "compact" means nothing until you know what each keeps.
+var (
+	footerNames  = []string{"Full", "Curated", "Compact", "Minimal"}
+	footerValues = []string{session.FooterFull, session.FooterCurated, session.FooterCompact, session.FooterMinimal}
+	footerDescs  = map[string]string{
+		session.FooterFull:    "Every action for the selected row, plus the global keys",
+		session.FooterCurated: "Up to three actions for the selected row — the rest live in help",
+		session.FooterCompact: "Abbreviated key+label pairs",
+		session.FooterMinimal: "Keys only, no labels",
+	}
+)
+
+// footerIndex returns the radio index for a configured footer value.
+func footerIndex(value string) int {
+	resolved := (session.UISettings{Footer: value}).GetFooter()
+	for i, v := range footerValues {
+		if v == resolved {
+			return i
+		}
+	}
+	return 0
 }
 
 // Stats format names for radio selection
@@ -254,6 +281,7 @@ func (s *SettingsPanel) SetProfile(profile string) {
 func (s *SettingsPanel) LoadConfig(config *session.UserConfig) {
 	// Load theme
 	s.selectedTheme = themeIndex(config.Theme)
+	s.selectedFooter = footerIndex(config.UI.Footer)
 
 	// Rebuild tool lists: built-ins + custom tools + "None".
 	s.buildToolLists(config)
@@ -406,6 +434,11 @@ func (s *SettingsPanel) GetConfig() *session.UserConfig {
 	// Theme
 	if s.selectedTheme < len(themeValues) {
 		config.Theme = themeValues[s.selectedTheme]
+	}
+
+	// Footer style
+	if s.selectedFooter >= 0 && s.selectedFooter < len(footerValues) {
+		config.UI.Footer = footerValues[s.selectedFooter]
 	}
 
 	// Default tool
@@ -605,6 +638,13 @@ func (s *SettingsPanel) adjustValue(delta int) bool {
 		newVal := s.selectedTheme + delta
 		if newVal >= 0 && newVal < len(themeNames) {
 			s.selectedTheme = newVal
+			changed = true
+		}
+
+	case SettingFooter:
+		newVal := s.selectedFooter + delta
+		if newVal >= 0 && newVal < len(footerNames) {
+			s.selectedFooter = newVal
 			changed = true
 		}
 
@@ -883,6 +923,23 @@ func (s *SettingsPanel) View() string {
 		content.WriteString(dimStyle.Render("  "+note) + "\n")
 	}
 	content.WriteString("\n")
+
+	// FOOTER — how much of the key bar stays on screen. This was config-only
+	// ([ui].footer), so the way out of a crowded footer was visible only to
+	// someone reading the source.
+	content.WriteString(sectionStyle.Render("FOOTER"))
+	content.WriteString("\n")
+	footerRow := radioGroupFlow(footerNames, s.selectedFooter, pillsInnerWidth(dialogWidth))
+	if s.cursor == int(SettingFooter) {
+		footerRow = highlightStyle.Render(footerRow)
+	}
+	content.WriteString("  " + footerRow + "\n")
+	if s.selectedFooter >= 0 && s.selectedFooter < len(footerValues) {
+		if desc := footerDescs[footerValues[s.selectedFooter]]; desc != "" {
+			content.WriteString(dimStyle.Render("  "+desc) + "\n")
+		}
+	}
+	content.WriteString(dimStyle.Render("  Settings and help keys are always kept") + "\n\n")
 
 	// DEFAULT TOOL
 	content.WriteString(sectionStyle.Render("DEFAULT TOOL"))
@@ -1205,8 +1262,21 @@ func (s *SettingsPanel) View() string {
 	if totalLines > availHeight && s.height > 0 {
 		// Map cursor index to content line number (based on the fixed layout above).
 		// Update this mapping if settings are added/removed/reordered.
-		cursorToLine := [settingsCount]int{
-			4,  // SettingTheme
+		// Line map for cursor-anchored scrolling. The entries below the THEME
+		// block are written as upstream's fixed layout plus a computed shift:
+		// the THEME block grows a line when the selected palette carries a note
+		// (see themeNoteFor), and the FOOTER block beneath it is five lines that
+		// did not exist when these numbers were counted by hand. Deriving the
+		// shift keeps one edit — not thirty-five — when a section moves.
+		themeNoteLines := 0
+		if themeNoteFor(s.selectedTheme) != "" {
+			themeNoteLines = 1
+		}
+		// FOOTER block: header, radio row, description, always-kept note, blank.
+		const footerBlockLines = 5
+		shift := footerBlockLines + themeNoteLines
+
+		baseAfterTheme := []int{
 			7,  // SettingDefaultTool
 			11, // SettingDangerousMode
 			12, // SettingClaudeConfigDir
@@ -1241,7 +1311,25 @@ func (s *SettingsPanel) View() string {
 			61, // SettingShowOnlyInstalledTools (TOOL PICKER section)
 			62, // SettingVisibleTools
 		}
-		cursorLine := cursorToLine[s.cursor]
+
+		cursorToLine := make([]int, 0, settingsCount)
+		cursorToLine = append(cursorToLine,
+			4,                // SettingTheme
+			7+themeNoteLines, // SettingFooter — the radio row inside the new block
+		)
+		for _, line := range baseAfterTheme {
+			cursorToLine = append(cursorToLine, line+shift)
+		}
+		if len(cursorToLine) != settingsCount {
+			// A setting was added without a line: fail loudly in tests rather
+			// than index out of range in front of a user.
+			uiLog.Warn("settings_line_map_out_of_sync",
+				"entries", len(cursorToLine), "settings", settingsCount)
+		}
+		cursorLine := 0
+		if s.cursor >= 0 && s.cursor < len(cursorToLine) {
+			cursorLine = cursorToLine[s.cursor]
+		}
 
 		// Ensure cursor is visible with 2 lines of context
 		if cursorLine-2 < s.scrollOffset {

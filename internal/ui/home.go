@@ -9673,6 +9673,7 @@ func (h *Home) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 				h.reloadHotkeysFromConfig()
 				h.showSessionTimestamps = config.Display.ShowSessionTimestamps
 				h.showPaneTitles = config.Display.ShowPaneTitles
+				h.footerMode = config.UI.GetFooter()
 
 				// Apply theme changes live
 				h.stopThemeWatcher()
@@ -19178,13 +19179,6 @@ func (h *Home) renderHelpBarFull() string {
 		Bold(true)
 	contextLabel := ctxStyle.Render(contextTitle + ":")
 
-	// Build shortcuts line with visual grouping
-	var shortcutsLine string
-	shortcutsLine = strings.Join(primaryHints, " ")
-	if len(secondaryHints) > 0 {
-		shortcutsLine += sep + strings.Join(secondaryHints, " ")
-	}
-
 	// Reload indicator
 	var reloadIndicator string
 	h.reloadMu.Lock()
@@ -19197,39 +19191,46 @@ func (h *Home) renderHelpBarFull() string {
 		reloadIndicator = reloadStyle.Render("⟳ Reloading...")
 	}
 
-	// Global shortcuts (right side) - more compact with separators
+	// Global shortcuts (right side) - more compact with separators. Each
+	// carries a drop priority: when the row is too narrow the low tiers go
+	// first and the help key never does (see fitFooterRow).
 	globalStyle := lipgloss.NewStyle().Foreground(ColorComment)
-	globalParts := []string{globalStyle.Render("↑↓ Nav")}
-	globalParts = append(globalParts, globalStyle.Render("+/- Move"))
-	if key := h.actionKey(hotkeySearch); key != "" {
-		globalParts = append(globalParts, globalStyle.Render(key+" Search"))
+	globals := []footerGlobal{
+		{globalStyle.Render("↑↓ Nav"), footerDropNav},
+		{globalStyle.Render("+/- Move"), footerDropNav},
 	}
-	globalParts = append(globalParts, globalStyle.Render("G Global"))
+	if key := h.actionKey(hotkeySearch); key != "" {
+		globals = append(globals, footerGlobal{globalStyle.Render(key + " Search"), footerDropSearch})
+	}
+	globals = append(globals, footerGlobal{globalStyle.Render("G Global"), footerDropSearch})
 	if key := h.actionKey(hotkeySettings); key != "" {
-		globalParts = append(globalParts, globalStyle.Render(key+" Settings"))
+		globals = append(globals, footerGlobal{globalStyle.Render(key + " Settings"), footerDropSettings})
 	}
 	if key := h.actionKey(hotkeyHelp); key != "" {
-		globalParts = append(globalParts, globalStyle.Render(key+" Help"))
+		globals = append(globals, footerGlobal{globalStyle.Render(key + " Help"), footerDropHelp})
 	}
 	if key := h.actionKey(hotkeyQuit); key != "" {
-		globalParts = append(globalParts, globalStyle.Render(key+" Quit"))
+		globals = append(globals, footerGlobal{globalStyle.Render(key + " Quit"), footerDropQuit})
 	}
-	globalHints := strings.Join(globalParts, sep)
 
-	// Calculate spacing between left (context) and right (global) portions
-	leftPart := contextLabel + " " + shortcutsLine
+	// Context hints are trimmed from the lowest-priority end; the group
+	// separator rides on the first secondary hint so trimming can never leave
+	// a dangling "│".
+	contextHints := append([]string(nil), primaryHints...)
+	for i, hint := range secondaryHints {
+		if i == 0 {
+			contextHints = append(contextHints, strings.TrimPrefix(sep, " ")+hint)
+			continue
+		}
+		contextHints = append(contextHints, hint)
+	}
+
+	leftPrefix := contextLabel + " "
 	if reloadIndicator != "" {
-		leftPart = reloadIndicator + sep + leftPart
-	}
-	rightPart := globalHints
-	padding := h.width - lipgloss.Width(leftPart) - lipgloss.Width(rightPart) - spacingNormal
-	if padding < spacingNormal {
-		// Content too wide for one line — drop right part to avoid overflow
-		padding = spacingNormal
-		rightPart = ""
+		leftPrefix = reloadIndicator + sep + leftPrefix
 	}
 
-	helpContent := leftPart + strings.Repeat(" ", padding) + rightPart
+	helpContent := fitFooterRow(h.width, leftPrefix, contextHints, globals, sep, spacingNormal)
 
 	raw := lipgloss.JoinVertical(lipgloss.Left, border, helpContent)
 	return lipgloss.NewStyle().MaxWidth(h.width).Render(raw)
