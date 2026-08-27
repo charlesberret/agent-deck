@@ -9698,10 +9698,18 @@ func (h *Home) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return h, cmd
 		}
 
-		// Handle overlays first
-		// Help overlay takes priority (any key closes it)
+		// Handle overlays first. The help overlay is a palette: it consumes the
+		// keystroke, and when Enter chose a row it hands back that row's key,
+		// which is replayed here as if it had been typed on the list. Dispatch
+		// stays in handleMainKey — the palette adds no second definition of any
+		// command.
 		if h.helpOverlay.IsVisible() {
 			h.helpOverlay, _ = h.helpOverlay.Update(msg)
+			if trigger := h.helpOverlay.TakeTrigger(); trigger != "" {
+				if replay, ok := keyMsgFor(trigger); ok {
+					return h.handleMainKey(replay)
+				}
+			}
 			return h, nil
 		}
 		if h.search.IsVisible() {

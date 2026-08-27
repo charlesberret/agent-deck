@@ -5,8 +5,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-
-	"github.com/asheshgoplani/agent-deck/internal/session"
 )
 
 // wrapWithHangingIndent wraps text to fit within width, indenting continuation
@@ -54,6 +52,13 @@ type HelpOverlay struct {
 	// this overlay is part of the TUI: a user who has adopted nothing must not
 	// find a key here for a surface that does not exist for them.
 	hasAgents bool
+
+	// Palette state. filter is what has been typed; selected indexes the
+	// runnable rows of the filtered list; pendingTrigger is the key Enter
+	// chose, collected by the caller through TakeTrigger.
+	filter         string
+	selected       int
+	pendingTrigger string
 }
 
 // SetHasAgents records whether anything has been adopted.
@@ -73,6 +78,9 @@ func NewHelpOverlay() *HelpOverlay {
 func (h *HelpOverlay) Show() {
 	h.visible = true
 	h.scrollOffset = 0
+	h.filter = ""
+	h.selected = 0
+	h.pendingTrigger = ""
 }
 
 // Hide hides the help overlay
@@ -123,50 +131,137 @@ func (h *HelpOverlay) keyPair(a, b, fallback string) string {
 	return ""
 }
 
-// Update handles messages for the help overlay
+// Update handles messages for the help overlay.
+//
+// The overlay is a palette, so printable keys type into the filter rather than
+// closing it — j and k are filter text now, and scrolling lives on the arrows,
+// page keys, and Ctrl+U/D. Esc clears the filter, then closes.
 func (h *HelpOverlay) Update(msg tea.Msg) (*HelpOverlay, tea.Cmd) {
 	if !h.visible {
 		return h, nil
 	}
 
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "j", "down":
-			h.scrollOffset++
-			return h, nil
-		case "k", "up":
-			if h.scrollOffset > 0 {
-				h.scrollOffset--
-			}
-			return h, nil
-		case "ctrl+d", "pgdown":
-			h.scrollOffset += 10
-			return h, nil
-		case "ctrl+u", "pgup":
-			if h.scrollOffset > 10 {
-				h.scrollOffset -= 10
-			} else {
-				h.scrollOffset = 0
-			}
-			return h, nil
-		case "home":
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return h, nil
+	}
+
+	switch key.String() {
+	case "esc":
+		if h.filter != "" {
+			h.filter = ""
+			h.selected = 0
 			h.scrollOffset = 0
 			return h, nil
-		case "end":
-			h.scrollOffset = 9999 // Will be clamped in View()
-			return h, nil
-		case "g":
-			h.scrollOffset = 0
-			return h, nil
-		case "G":
-			h.scrollOffset = 9999 // Will be clamped in View()
-			return h, nil
-		default:
-			// Any other key closes the help overlay
+		}
+		h.Hide()
+		return h, nil
+
+	case "enter":
+		if item, ok := h.selectedItem(); ok {
+			h.pendingTrigger = item.trigger
 			h.Hide()
 		}
+		return h, nil
+
+	case "down", "ctrl+n":
+		h.moveSelection(1)
+		return h, nil
+	case "up", "ctrl+p":
+		h.moveSelection(-1)
+		return h, nil
+
+	case "pgdown":
+		h.scrollOffset += 10
+		return h, nil
+	case "ctrl+u", "pgup":
+		if h.scrollOffset > 10 {
+			h.scrollOffset -= 10
+		} else {
+			h.scrollOffset = 0
+		}
+		return h, nil
+	case "ctrl+d":
+		h.scrollOffset += 10
+		return h, nil
+	case "home":
+		h.scrollOffset = 0
+		return h, nil
+	case "end":
+		h.scrollOffset = 9999 // Will be clamped in View()
+		return h, nil
+
+	case "backspace":
+		if runes := []rune(h.filter); len(runes) > 0 {
+			h.filter = string(runes[:len(runes)-1])
+			h.reselect()
+		}
+		return h, nil
+	case "ctrl+w":
+		h.filter = trimLastWord(h.filter)
+		h.reselect()
+		return h, nil
 	}
+
+	// Printable input types into the filter. Space included: multi-word
+	// queries ("copy pane") are how the palette narrows.
+	if key.Type == tea.KeyRunes && !key.Alt {
+		h.filter += string(key.Runes)
+		h.reselect()
+		return h, nil
+	}
+	if key.Type == tea.KeySpace {
+		h.filter += " "
+		h.reselect()
+		return h, nil
+	}
+
+	// Anything else (a chord we do not handle) closes, as it always did.
+	h.Hide()
 	return h, nil
+}
+
+// reselect moves the highlight to the row that best answers the current
+// filter, and resets the scroll so the answer is on screen.
+func (h *HelpOverlay) reselect() {
+	h.selected = defaultSelection(filterSections(h.buildSections(), h.filter), h.filter)
+	h.scrollOffset = 0
+}
+
+// selectedItem returns the highlighted runnable row of the filtered list.
+func (h *HelpOverlay) selectedItem() (helpItem, bool) {
+	runnable := runnableItems(filterSections(h.buildSections(), h.filter))
+	if h.selected < 0 || h.selected >= len(runnable) {
+		return helpItem{}, false
+	}
+	return runnable[h.selected], true
+}
+
+// moveSelection walks the runnable rows, clamping at both ends rather than
+// wrapping: a palette that jumps from bottom to top loses the reader's place.
+func (h *HelpOverlay) moveSelection(delta int) {
+	count := len(runnableItems(filterSections(h.buildSections(), h.filter)))
+	if count == 0 {
+		h.selected = 0
+		return
+	}
+	next := h.selected + delta
+	if next < 0 {
+		next = 0
+	}
+	if next >= count {
+		next = count - 1
+	}
+	h.selected = next
+}
+
+// trimLastWord drops the trailing word of the filter (Ctrl+W).
+func trimLastWord(s string) string {
+	trimmed := strings.TrimRight(s, " ")
+	if idx := strings.LastIndex(trimmed, " "); idx >= 0 {
+		return trimmed[:idx+1]
+	}
+	return ""
 }
 
 // View renders the help overlay
@@ -175,226 +270,7 @@ func (h *HelpOverlay) View() string {
 		return ""
 	}
 
-	// Define help sections
-	newKeys := h.keyPair(hotkeyNewSession, hotkeyQuickCreate, "n/N")
-	forkKeys := h.keyPair(hotkeyQuickFork, hotkeyForkWithOptions, "f/F")
-	reorderUpKeys := "+ / K / Shift+↑"
-	reorderDownKeys := "- / J / Shift+↓"
-	indentKeys := "Shift+→/←"
-	pinKeys := ","
-	searchKey := h.key(hotkeySearch, "/")
-	settingsKey := h.key(hotkeySettings, "S")
-	helpKey := h.key(hotkeyHelp, "?")
-	quitKey := h.key(hotkeyQuit, "q")
-	importKey := h.key(hotkeyImport, "i")
-	reloadKey := h.key(hotkeyReload, "Ctrl+R")
-	deleteKey := h.key(hotkeyDelete, "d")
-	closeKey := h.key(hotkeyCloseSession, "D")
-	restartKey := h.key(hotkeyRestart, "Shift+R")
-	restartFreshKey := h.key(hotkeyRestartFresh, "Shift+T")
-	renameKey := h.key(hotkeyRename, "r")
-	moveKey := h.key(hotkeyMoveToGroup, "M")
-	mcpKey := h.key(hotkeyMCPManager, "m")
-	pluginKey := h.key(hotkeyPluginManager, "L")
-	skillsKey := h.key(hotkeySkillsManager, "s")
-	previewKey := h.key(hotkeyTogglePreview, "v")
-	groupViewKey := h.key(hotkeyCycleGroupView, "t")
-	timeFilterKey := h.key(hotkeyCycleTimeFilter, "*")
-	// Opt-in: empty when switch_session is unbound, so the filter drops the row.
-	switchKey := h.key(hotkeySwitchSession, "")
-	// In-attach scrollback pager (#1491). Its trigger is resolved directly (it is
-	// not a home-screen key); empty label when disabled drops the row.
-	scrollbackKey := ResolvedScrollbackTrigger(session.GetHotkeyOverrides()).Label()
-	unreadKey := h.key(hotkeyMarkUnread, "u")
-	quickApproveKey := h.key(hotkeyQuickApprove, "a")
-	promptSessionKey := h.key(hotkeyPromptSession, "o")
-	copyKey := h.key(hotkeyCopyOutput, "c")
-	copyPaneKey := h.key(hotkeyCopyPane, "V")
-	sendKey := h.key(hotkeySendOutput, "x")
-	execShellKey := h.key(hotkeyExecShell, "E")
-	openShellHereKey := h.key(hotkeyOpenShellHere, "h")
-	notesKey := h.key(hotkeyEditNotes, "e")
-	if cfg, _ := session.LoadUserConfig(); cfg != nil && !cfg.GetShowNotes() {
-		notesKey = ""
-	}
-	editPathsKey := h.key(hotkeyEditPaths, "p")
-	editSessionKey := h.key(hotkeyEditSession, "P")
-	worktreeSetupKey := h.key(hotkeyWorktreeSetup, "b")
-	worktreeKey := h.key(hotkeyWorktreeFinish, "W")
-	watcherPanelKey := h.key(hotkeyWatcherPanel, "w")
-	agentsPanelKey := h.key(hotkeyAgentsPanel, "alt+a")
-	groupKey := h.key(hotkeyCreateGroup, "g")
-	undoKey := h.key(hotkeyUndoDelete, "Ctrl+Z")
-	archiveKey := h.key(hotkeyArchiveSession, "A")
-	unarchiveKey := h.key(hotkeyUnarchiveSession, "Shift+U")
-	viewArchivedKey := h.key(hotkeyViewArchived, "^")
-	detachKey := DetachByteLabel(DetachByteFromBinding(h.key(hotkeyDetach, "ctrl+q")))
-
-	sections := []struct {
-		title string
-		items [][2]string // [key, description]
-	}{
-		{
-			title: "QUICK START",
-			items: [][2]string{
-				{"Enter", "Attach to selected session"},
-				{restartKey, "Restart selected session"},
-				{detachKey, "Detach from session"},
-				{helpKey, "Open this help"},
-			},
-		},
-		{
-			title: "NAVIGATION",
-			items: [][2]string{
-				{"j / Down", "Move down"},
-				{"k / Up", "Move up"},
-				{"Ctrl+u/d", "Half page up/down"},
-				{"PgUp / PgDn", "Half page up/down"},
-				{"Ctrl+f/b", "Full page up/down"},
-				{"Home / End", "Jump to first / last item"},
-				{"gg / G", "Jump to top / global search"},
-				{"h / Left", "Collapse / parent"},
-				{"l / Right", "Expand / toggle"},
-				{"Shift+Left", "Fully collapse top-level folder (current)"},
-				{"Shift+Right", "Fully expand top-level folder (current)"},
-				{"Cmd+Shift+Left", "Collapse entire tree"},
-				{"Cmd+Shift+Right", "Expand entire tree"},
-				{"1-9", "Jump to root group"},
-				{"Space", "Jump mode"},
-				{"Enter", "Attach / toggle"},
-				{"Shift+Enter", "Open session in new iTerm window (macOS)"},
-			},
-		},
-		{
-			title: "GROUP NAVIGATION (v1.7.60)",
-			items: [][2]string{
-				{"Alt+j / Alt+k", "Next / prev session in group"},
-				{"Alt+1 - Alt+9", "Jump to Nth session in group"},
-				{"Alt+g / Alt+G", "First / last in group"},
-				{"Alt+/", "Filter search in group"},
-			},
-		},
-		{
-			title: "SESSIONS",
-			items: [][2]string{
-				{newKeys, "New / quick create"},
-				{renameKey, "Rename session"},
-				{restartKey, "Restart session"},
-				{restartFreshKey, "Restart with new session ID"},
-				{deleteKey, "Delete session"},
-				{closeKey, "Close session process"},
-				{undoKey, "Undo delete"},
-				{archiveKey, "Archive session"},
-				{unarchiveKey, "Unarchive session"},
-				{viewArchivedKey, "Toggle archived view"},
-				{moveKey, "Move to group"},
-				{mcpKey, "MCP Manager (Claude/Gemini/Cursor)"},
-				{pluginKey, "Plugin Manager (Claude — RFC PLUGIN_ATTACH.md)"},
-				{skillsKey, "Skills Manager"},
-				{CostDashboardKey, "Cost Dashboard"},
-				{previewKey, "Toggle preview mode (output/stats/both)"},
-				{"O", "Toggle preview orientation (right / below — portrait monitors)"},
-				{"< / >", "Shrink / grow preview pane by 5% (drag divider with mouse; vertical in below-orientation)"},
-				{unreadKey, "Mark unread"},
-				{quickApproveKey, "Quick approve (send '1' to Claude)"},
-				{promptSessionKey, "Prompt session (send a one-line prompt without attaching)"},
-				{reorderUpKeys, "Reorder up (auto-promote at edge)"},
-				{reorderDownKeys, "Reorder down (auto-promote at edge)"},
-				{indentKeys, "Indent / outdent (in group)"},
-				{pinKeys, "Pin (cycle off→top→bottom→off)"},
-				{forkKeys, "Fork session (Claude/Pi)"},
-				{copyKey, "Copy output to clipboard"},
-				{"C", "Copy preview info (Repo / Path / Branch)"},
-				{"Y", "Copy a code block from output"},
-				{copyPaneKey, "Copy visible terminal text, including links"},
-				{sendKey, "Send output to session"},
-				{execShellKey, "Exec shell in sandbox container"},
-				{openShellHereKey, "Open shell in session's worktree (split pane / window)"},
-				{editPathsKey, "Edit multi-repo paths"},
-				{editSessionKey, "Edit session settings (title/color/...)"},
-				{notesKey, "Edit notes"},
-			},
-		},
-		{
-			title: "WORKTREES",
-			items: [][2]string{
-				{worktreeSetupKey, "Re-run worktree setup script"},
-				{worktreeKey, "Finish worktree (merge + cleanup)"},
-				{"n → w", "Create session in worktree"},
-				{"F → w", "Fork session into worktree"},
-			},
-		},
-		{
-			title: "WATCHERS",
-			items: [][2]string{
-				{watcherPanelKey, "Watcher panel"},
-			},
-		},
-		{
-			title: "GROUPS",
-			items: [][2]string{
-				{groupKey, "New group"},
-				{renameKey, "Rename group"},
-				{"Tab", "Toggle expand"},
-			},
-		},
-		{
-			title: "SEARCH & FILTER",
-			items: [][2]string{
-				{searchKey, "Open search"},
-				{FilterKeyError, "Filter errors"},
-				{FilterKeyActive, "Filter open (hide errors)"},
-				{"/waiting", "Filter waiting"},
-				{"/running", "Filter running"},
-				{"/idle", "Filter idle"},
-				{groupViewKey, "Cycle view: active-on-top / populated-on-top"},
-				{timeFilterKey, "Cycle time filter: today / 3 days / 7 days / all"},
-			},
-		},
-		{
-			title: "OTHER",
-			items: [][2]string{
-				{settingsKey, "Settings"},
-				{reloadKey, "Reload from disk"},
-				{importKey, "Import tmux sessions"},
-				{switchKey, "Switch session (here or attached)"},
-				{scrollbackKey, "Scrollback pager (while attached)"},
-				{quitKey, "Quit"},
-				{helpKey, "This help"},
-			},
-		},
-		{
-			title: "STARTUP FLAGS",
-			items: [][2]string{
-				{"--group <name>", "Launch scoped to a group"},
-				{"--profile <name>", "Use specific profile"},
-			},
-		},
-	}
-
-	// The Agents row appears only once something has been adopted. The whole
-	// feature is opt-in by presence, and the help overlay is part of the TUI:
-	// a user with no agents must not find a key here for a surface that does
-	// not exist for them.
-	if h.hasAgents {
-		for i := range sections {
-			if sections[i].title == "WATCHERS" {
-				sections[i].items = append(sections[i].items, [2]string{agentsPanelKey, "Agents"})
-				break
-			}
-		}
-	}
-
-	for i := range sections {
-		filtered := sections[i].items[:0]
-		for _, item := range sections[i].items {
-			if strings.TrimSpace(item[0]) == "" {
-				continue
-			}
-			filtered = append(filtered, item)
-		}
-		sections[i].items = filtered
-	}
+	sections := h.buildSections()
 
 	// Styles
 	titleStyle := lipgloss.NewStyle().
@@ -446,18 +322,70 @@ func (h *HelpOverlay) View() string {
 		Foreground(ColorYellow).
 		Bold(true)
 
+	// Palette styles: the selection is a filled chip so it reads at a glance,
+	// reference-only rows are dimmed so the eye skips them.
+	selectedKeyStyle := lipgloss.NewStyle().
+		Foreground(ColorAccent).
+		Bold(true).
+		Width(keyWidth)
+	selectedDescStyle := lipgloss.NewStyle().Foreground(ColorText).Bold(true)
+	referenceStyle := lipgloss.NewStyle().Foreground(ColorComment)
+	const selectedMarker = "▸ "
+
+	// The filter narrows the list; the selection walks the runnable rows of
+	// whatever survives.
+	sections = filterSections(sections, h.filter)
+	runnable := runnableItems(sections)
+	if h.selected >= len(runnable) {
+		h.selected = len(runnable) - 1
+	}
+	if h.selected < 0 {
+		h.selected = 0
+	}
+	runnableIndex := 0
+	selectedLine := -1
+
 	// Build content as lines for scrolling support
 	var lines []string
 
 	lines = append(lines, titleStyle.Render("KEYBOARD SHORTCUTS"))
+	filterLabel := lipgloss.NewStyle().Foreground(ColorComment).Italic(true)
+	if h.filter == "" {
+		lines = append(lines, filterLabel.Render("type to filter · ↑↓ select · enter run · esc close"))
+	} else {
+		queryStyle := lipgloss.NewStyle().Foreground(ColorAccent).Bold(true)
+		summary := "no match"
+		if len(runnable) > 0 {
+			summary = "enter runs the highlighted row"
+		}
+		lines = append(lines, filterLabel.Render("filter ")+queryStyle.Render(h.filter)+filterLabel.Render("  ·  "+summary))
+	}
 	lines = append(lines, "")
+
+	if len(sections) == 0 {
+		lines = append(lines, referenceStyle.Render("  nothing matches "+h.filter))
+	}
 
 	for i, section := range sections {
 		lines = append(lines, sectionStyle.Render(section.title))
 		for _, item := range section.items {
-			wrapped := wrapWithHangingIndent(item[1], descWidth, hangingIndent)
-			line := "  " + keyStyle.Render(item[0]) + descStyle.Render(wrapped)
-			lines = append(lines, line)
+			wrapped := wrapWithHangingIndent(item.desc, descWidth, hangingIndent)
+			marker := "  "
+			rowKeyStyle, rowDescStyle := keyStyle, descStyle
+			if item.runnable() {
+				if runnableIndex == h.selected {
+					marker = selectedMarker
+					rowKeyStyle = selectedKeyStyle
+					rowDescStyle = selectedDescStyle
+					selectedLine = len(lines)
+				}
+				runnableIndex++
+			} else {
+				// Reference rows (ranges, sequences, startup flags) cannot be
+				// run from here, so they are never the selection.
+				rowDescStyle = referenceStyle
+			}
+			lines = append(lines, marker+rowKeyStyle.Render(item.key)+rowDescStyle.Render(wrapped))
 		}
 		if i < len(sections)-1 {
 			lines = append(lines, "")
@@ -495,6 +423,23 @@ func (h *HelpOverlay) View() string {
 	}
 	if h.scrollOffset < 0 {
 		h.scrollOffset = 0
+	}
+
+	// Keep the selected row on screen: filtering and arrow-key selection both
+	// move it, and a selection scrolled out of view is worse than no selection.
+	if selectedLine >= 0 && needsScroll {
+		if selectedLine < h.scrollOffset+1 {
+			h.scrollOffset = selectedLine - 1
+		}
+		if selectedLine >= h.scrollOffset+availableHeight-1 {
+			h.scrollOffset = selectedLine - availableHeight + 2
+		}
+		if h.scrollOffset > maxScroll {
+			h.scrollOffset = maxScroll
+		}
+		if h.scrollOffset < 0 {
+			h.scrollOffset = 0
+		}
 	}
 
 	// Build visible content
@@ -544,13 +489,17 @@ func (h *HelpOverlay) View() string {
 		}
 	}
 
-	// Footer with appropriate hint
+	// Footer hint. j/k are filter text now, so scrolling is advertised on the
+	// keys that still scroll.
 	content.WriteString("\n\n")
+	hint := "↑↓ select • enter run • esc close"
 	if needsScroll {
-		content.WriteString(footerStyle.Render("j/k scroll • any other key to close"))
-	} else {
-		content.WriteString(footerStyle.Render("Press any key to close"))
+		hint = "↑↓ select • PgUp/PgDn scroll • enter run • esc close"
 	}
+	if h.filter != "" {
+		hint = "esc clears the filter • " + hint
+	}
+	content.WriteString(footerStyle.Render(hint))
 
 	// Wrap in dialog box
 	box := DialogBoxStyle.
