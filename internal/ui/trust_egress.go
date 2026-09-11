@@ -15,14 +15,15 @@ import (
 //
 // Row shows a single egress mark before the brand icon:
 //
-//	⌂ local/mesh · ☁ vendor · ! shell/unbounded
+//	⌂ local/mesh · ↑ vendor (data leaves) · ! shell/unbounded
 //
+// Prefer single-cell symbols (☁ was muddy/double-width in Ghostty).
 // Full multi-factor badge (L:c:ip) stays in `agent-deck-trust` CLI / detail
 // panel later — this is the v1 glance the UX brief called for.
 
 const (
 	egressLocal  = "⌂"
-	egressVendor = "☁"
+	egressVendor = "↑"
 	egressAlert  = "!"
 )
 

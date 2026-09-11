@@ -245,8 +245,13 @@ func TestRenderToolBadgeForPath_FlagsBlockedPairing(t *testing.T) {
 	keys := homeJoin(t, "cloud", "sync", "keys")
 
 	got := renderToolBadgeForPath("claude", []string{keys}, style)
-	if !strings.Contains(got, trustFlagBlocked) {
-		t.Fatalf("expected %q in badge for claude on keys/, got %q", trustFlagBlocked, got)
+	gotPlain := stripANSIForTest(got)
+	if !strings.Contains(gotPlain, " "+trustFlagBlocked) {
+		t.Fatalf("expected space-separated %q in badge for claude on keys/, got %q", trustFlagBlocked, gotPlain)
+	}
+	fields := strings.Fields(gotPlain)
+	if strings.Join(fields, " ") != strings.TrimSpace(gotPlain) {
+		t.Fatalf("irregular badge spacing: %q", gotPlain)
 	}
 
 	repo := homeJoin(t, "cloud", "git-projects", "kettle-core")
@@ -263,7 +268,41 @@ func TestRenderToolBadgeForPath_FlagsBlockedPairing(t *testing.T) {
 	career := homeJoin(t, "cloud", "sync", "career")
 	multi := renderToolBadgeForPath("claude", []string{repo, career}, style)
 	if !strings.Contains(multi, trustFlagBlocked) {
-		t.Fatalf("repo + career must flag on the worst path, got %q", multi)
+		t.Fatalf("repo + career must flag ⊘, got %q", multi)
+	}
+}
+
+// Row paints bare ⊘ for both H1 (grok ~ / sealed) and H2 (grok system/ /
+// personal). Do not unflag either. H1/H2 split is CLI-only.
+func TestTrustFlag_GrokHomeAndSystemStillBlocked(t *testing.T) {
+	useFleetRegistry(t)
+
+	if got := TrustFlag("grok", homeJoin(t)); got != trustFlagBlocked {
+		t.Errorf("grok ~ = %q, want %q", got, trustFlagBlocked)
+	}
+	sys := homeJoin(t, "cloud", "sync", "system")
+	if got := TrustFlag("grok", sys); got != trustFlagBlocked {
+		t.Errorf("grok system/ = %q, want %q", got, trustFlagBlocked)
+	}
+	if got := TrustFlag("claude", homeJoin(t)); got != trustFlagBlocked {
+		t.Errorf("claude ~ = %q, want %q", got, trustFlagBlocked)
+	}
+	if got := TrustFlag("claude", sys); got != trustFlagBlocked {
+		t.Errorf("claude system/ = %q, want %q", got, trustFlagBlocked)
+	}
+}
+
+// Mixed path lists stay blocked. The row no longer ranks H1 vs H2.
+func TestTrustFlagForPaths_StillBlocked(t *testing.T) {
+	useFleetRegistry(t)
+
+	keys := homeJoin(t, "cloud", "sync", "keys")
+	career := homeJoin(t, "cloud", "sync", "career")
+	if got := TrustFlagForPaths("grok", []string{career, keys}); got != trustFlagBlocked {
+		t.Errorf("career+keys = %q, want %q", got, trustFlagBlocked)
+	}
+	if got := TrustFlagForPaths("grok", []string{career}); got != trustFlagBlocked {
+		t.Errorf("career only = %q, want %q", got, trustFlagBlocked)
 	}
 }
 

@@ -63,10 +63,16 @@ var subjectShort = map[SubjectClass]string{
 // Short returns the badge token for a class ("pub", "ip", "seal", ...).
 func (c SubjectClass) Short() string { return subjectShort[c] }
 
-// Trust flags rendered after the egress glyph.
+// Trust flags rendered as their own space-separated token after the brand icon.
 const (
 	trustFlagOverprivilege = "!"
-	trustFlagBlocked       = "×"
+	// trustFlagBlocked is circled division slash (⊘) — the monospace-safe
+	// "no" sign (circle + diagonal). Not "×"/"✕" (collides with StatusError
+	// ✕ before the title) and not "🛇"/"🚫" (emoji presentation; Ghostty
+	// often substitutes a red hexagon + ?). The row paints one rune for
+	// any hard block (register H1 or H2). CLI match still prints H1/H2;
+	// the suffix is not operator-facing until those rules refuse launch.
+	trustFlagBlocked = "⊘"
 	// trustFlagUnclassified marks a pairing the register could not judge --
 	// an unregistered tool, or a registry that would not load. It is louder
 	// than nothing on purpose: "unknown" is worse than "over-privileged",
@@ -235,10 +241,9 @@ func loadTrustModel() *trustModel {
 				si.ceiling = SubjectProjectIP
 			}
 		}
-		// T2 -- retention is a fact of the provider, not of manners. The
-		// Claude/Grok/Gemini rows record `unknown` pending ZDR ratification
-		// (register gap 7); `unknown` must never gate more weakly than
-		// `vendor-may-retain`, or H1 silently switches off for those seats.
+		// T2 -- retention is a fact of the provider, not of manners. P0a
+		// pinned claude/grok/gemini vendor-may-retain; a leftover unknown
+		// on a vendor row must still never gate more weakly than that.
 		if si.locus == "vendor" {
 			si.retention = "vendor-may-retain"
 		}
@@ -362,9 +367,9 @@ func TrustSubjectClass(path string) SubjectClass {
 
 // TrustFlag reports whether this tool is appropriate for work at path.
 //
-//	"×" the provider may not hold this subject at all (register H1/H2)
-//	"?" could not judge -- unregistered tool, or registry unreadable
-//	""  nothing to say
+//	"⊘"  hard-blocked (register H1 or H2). One rune; the H1/H2 split is CLI.
+//	"?"  could not judge -- unregistered tool, or registry unreadable
+//	""   nothing to say
 //
 // Two register warnings are deliberately NOT rendered here, because the row is
 // the scannability surface and the operator card's glance test only works if
@@ -398,11 +403,12 @@ func TrustFlag(tool, path string) string {
 	subject := TrustSubjectClass(path)
 
 	// H1 — secret material must never sit under a vendor seat.
+	// H2 — subject exceeds what this surface may touch.
+	// Row does not distinguish; CLI match still names the rule.
 	if si.retention == "vendor-may-retain" &&
 		(subject == SubjectCredential || subject == SubjectSealed) {
 		return trustFlagBlocked
 	}
-	// H2 — subject exceeds what this surface may touch.
 	if subject > si.ceiling {
 		return trustFlagBlocked
 	}
@@ -417,7 +423,10 @@ func TrustFlagForPaths(tool string, paths []string) string {
 		return trustFlagUnclassified
 	}
 	worst := ""
-	rank := map[string]int{"": 0, trustFlagUnclassified: 1, trustFlagOverprivilege: 2, trustFlagBlocked: 3}
+	rank := map[string]int{
+		"": 0, trustFlagUnclassified: 1, trustFlagOverprivilege: 2,
+		trustFlagBlocked: 3,
+	}
 	for _, p := range paths {
 		if strings.TrimSpace(p) == "" {
 			continue

@@ -3,7 +3,10 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestTrustEgressGlyph_Builtin(t *testing.T) {
@@ -12,12 +15,12 @@ func TestTrustEgressGlyph_Builtin(t *testing.T) {
 
 	cases := map[string]string{
 		"ornith":       "⌂",
-		"claude":       "☁",
-		"wk-kimi-code": "☁",
-		"oll-heavy":    "☁",
+		"claude":       "↑",
+		"wk-kimi-code": "↑",
+		"oll-heavy":    "↑",
 		"wk-granite":   "⌂",
 		"shell":        "!",
-		"GROK":         "☁", // case fold
+		"GROK":         "↑", // case fold
 	}
 	for tool, want := range cases {
 		if got := TrustEgressGlyph(tool); got != want {
@@ -54,9 +57,14 @@ func TestRenderToolBadge_IncludesEgress(t *testing.T) {
 	if got == "" {
 		t.Fatal("empty badge")
 	}
-	// Must contain cloud egress mark
-	if !containsAll(got, "☁") {
-		t.Fatalf("expected ☁ egress in badge, got %q", got)
+	// Must contain vendor egress mark (↑ = data leaves)
+	if !containsAll(got, "↑") {
+		t.Fatalf("expected ↑ egress in badge, got %q", got)
+	}
+	// Leading cell before the cluster; exactly one space between ↑ and brand.
+	plain := stripANSIForTest(got)
+	if !strings.HasPrefix(plain, " ↑ ") {
+		t.Fatalf("expected ' ↑ <brand>' (one space either side of ↑), got %q", plain)
 	}
 	icon := ToolIcon("claude")
 	if icon != "" && !containsAll(got, icon) {
@@ -73,4 +81,8 @@ func TestRenderToolBadge_LocalOrnith(t *testing.T) {
 	if !containsAll(got, "⌂") {
 		t.Fatalf("expected ⌂ for ornith, got %q", got)
 	}
+}
+
+func stripANSIForTest(s string) string {
+	return ansi.Strip(s)
 }

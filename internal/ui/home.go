@@ -6012,10 +6012,24 @@ func compactPaneSubtitle(sessionTitle, tool, groupPath, paneTitle string) string
 	return strings.Join(kept, " - ")
 }
 
-// renderToolBadge paints egress glyph (⌂/☁/!) + brand icon for tool in style.
+// renderToolBadge paints egress glyph (⌂/↑/!) + brand icon for tool in style.
 // Egress mark is trust posture (see trust_egress.go); brand icon/color stay
 // family identity. Falls back to the bare tool name when no icon is registered.
+//
+// Spacing contract (row concatenates title+tool with no gap of its own):
+//
+//	" " + join(parts, " ")
+//
+// so every visible token — egress, brand icon, and any privilege flag from
+// renderToolBadgeForPath — is separated from the previous element by exactly
+// one ASCII space. No flush adjacency, no double pads.
 func renderToolBadge(tool string, style lipgloss.Style) string {
+	return renderToolBadgeWithFlag(tool, style, "")
+}
+
+// renderToolBadgeWithFlag is the single join path for the tool-column trust
+// cluster. flag is "" / "⊘" / "?" (see trust_subject.go).
+func renderToolBadgeWithFlag(tool string, style lipgloss.Style, flag string) string {
 	if tool == "" {
 		return ""
 	}
@@ -6023,12 +6037,21 @@ func renderToolBadge(tool string, style lipgloss.Style) string {
 	if label == "" {
 		label = tool
 	}
+
+	parts := make([]string, 0, 3)
 	if eg := TrustEgressGlyph(tool); eg != "" {
-		// Dim egress, then brand-colored icon — two signals, one column.
-		egStyled := lipgloss.NewStyle().Foreground(ColorTextDim).Render(eg)
-		return " " + egStyled + style.Render(label)
+		parts = append(parts, lipgloss.NewStyle().Foreground(ColorTextDim).Render(eg))
 	}
-	return style.Render(" " + label)
+	parts = append(parts, style.Render(label))
+	if flag != "" {
+		flagColor := ColorYellow
+		if strings.HasPrefix(flag, trustFlagBlocked) {
+			flagColor = ColorRed
+		}
+		parts = append(parts, lipgloss.NewStyle().Foreground(flagColor).Bold(true).Render(flag))
+	}
+	// Leading space: title|badge gap. Join: one space between each token.
+	return " " + strings.Join(parts, " ")
 }
 
 // trustPathsFor returns every tree a session can reach, for the subject-match
@@ -6068,19 +6091,7 @@ func trustPathsFor(inst *session.Instance) []string {
 // renderToolBadge rather than pass a guess: a wrong path yields a falsely
 // reassuring badge.
 func renderToolBadgeForPath(tool string, paths []string, style lipgloss.Style) string {
-	badge := renderToolBadge(tool, style)
-	if badge == "" {
-		return ""
-	}
-	flag := TrustFlagForPaths(tool, paths)
-	if flag == "" {
-		return badge
-	}
-	flagColor := ColorYellow
-	if flag == trustFlagBlocked {
-		flagColor = ColorRed
-	}
-	return badge + lipgloss.NewStyle().Foreground(flagColor).Bold(true).Render(flag)
+	return renderToolBadgeWithFlag(tool, style, TrustFlagForPaths(tool, paths))
 }
 
 func (h *Home) getSessionRenderSnapshot() map[string]sessionRenderState {

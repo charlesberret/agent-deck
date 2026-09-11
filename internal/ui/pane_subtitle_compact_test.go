@@ -97,8 +97,12 @@ func TestRenderToolBadge_IconNotName(t *testing.T) {
 		}
 	}
 	// House trust mark: vendor egress before brand icon.
-	if !containsAll(got, "☁") {
-		t.Fatalf("renderToolBadge(grok) missing egress ☁: %q", got)
+	if !containsAll(got, "↑") {
+		t.Fatalf("renderToolBadge(grok) missing egress ↑: %q", got)
+	}
+	plain := stripANSIForTest(got)
+	if !strings.HasPrefix(plain, " ↑ ") {
+		t.Fatalf("renderToolBadge(grok) want ' ↑ <brand>', got %q", plain)
 	}
 }
 
