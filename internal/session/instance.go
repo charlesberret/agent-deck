@@ -3993,6 +3993,16 @@ func (i *Instance) updateCodexSession(excludeIDs map[string]bool, forceProbe boo
 //   - env_file: .env file to source for this tool
 func (i *Instance) buildGenericCommand(baseCommand string) string {
 	envPrefix := i.buildEnvSourceCommand()
+	// Inline AGENTDECK_* the way buildPiCommand / buildCodexCommand do.
+	// tmux SetEnvironment runs *after* Start(), so a wrapper that reads
+	// AGENTDECK_INSTANCE_ID at exec (oll-*, local-*, pi-wk-*) would otherwise
+	// never see the id on a fresh pane and would mint a new Pi jsonl.
+	envPrefix += fmt.Sprintf("AGENTDECK_INSTANCE_ID=%s AGENTDECK_TITLE=%s AGENTDECK_TOOL=%s AGENTDECK_PROFILE=%s ",
+		shellescape.Quote(i.ID),
+		shellescape.Quote(i.Title),
+		shellescape.Quote(i.Tool),
+		shellescape.Quote(sessionProfileEnvValue()),
+	)
 
 	toolDef := GetToolDef(i.Tool)
 	if toolDef == nil {
@@ -4360,6 +4370,10 @@ func isLiteralToolInvocation(baseCommand, literalName string) bool {
 //     for tools that expose an id in their JSON output but export no env var of
 //     their own (see buildGenericCommand)
 //  3. Persisted GenericSessionID from tool_data (survives reboot)
+//  4. Pane process-tree session_id_env — first-run capture for TUIs (grok)
+//     that export the id on descendant processes but never into tmux env.
+//     Skipped when (3) is already set so leftover MCP children cannot
+//     clobber a bound conversation.
 //
 // A live value is written through, so the next cold start resumes the same
 // chat. A persisted value is only returned while its recorded tool and
@@ -4395,7 +4409,10 @@ func (i *Instance) GetGenericSessionID() string {
 		}
 	}
 
-	return strings.TrimSpace(i.GenericSessionID)
+	if persisted := strings.TrimSpace(i.GenericSessionID); persisted != "" {
+		return persisted
+	}
+	return i.captureGenericSessionIDFromProcessTree()
 }
 
 // genericSessionEnvNames lists the tmux environment variables that may carry a
@@ -7385,8 +7402,13 @@ func (i *Instance) SyncSessionIDsFromTmux() {
 		}
 		if id = strings.TrimSpace(id); id != "" {
 			i.persistGenericSessionIDIfChanged(id)
-			break
+			return
 		}
+	}
+	// Tmux session env is empty (grok never publishes GROK_SESSION_ID there).
+	// First-run only: learn from pane descendants, do not override a binding.
+	if strings.TrimSpace(i.GenericSessionID) == "" {
+		i.captureGenericSessionIDFromProcessTree()
 	}
 }
 
