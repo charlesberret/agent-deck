@@ -114,6 +114,7 @@ var palettes = map[string]Palette{
 		Orange:  "#e79187", // role red_bright
 		Red:     "#d4756b", // role warn
 		Comment: "#8a8a92", // = TextDim
+		Glaze:   "#c8a24a", // chrome only (bead); never text
 
 		TmuxWindowStyle: "default",
 		TmuxStatusBg:    "#1c1c24",
@@ -140,11 +141,171 @@ var palettes = map[string]Palette{
 		Orange:  "#b23a26", // role red_bright
 		Red:     "#8e1904", // role warn
 		Comment: "#5b5d66", // = TextDim
+		Glaze:   "#1b4979", // chrome only (bead); never text
 
 		TmuxWindowStyle: "bg=#dfe1e8",
 		TmuxStatusBg:    "#e7e9ee",
 		TmuxStatusFg:    "#181a23",
 		TmuxHint:        "#5b5d66",
+	},
+
+	// Kettle Cerise — glaze pack, dark. Source: design/palettes/library/kettle-glazes.json.
+	"kettle-cerise": {
+		Name:    "kettle-cerise",
+		Display: "Kettle Cerise",
+
+		Bg:      "#16161e", // role ground
+		Surface: "#1c1c24", // role panel (ground +1 shade step)
+		Border:  "#3f3f4c", // role line
+		Text:    "#d8d8e0", // role ink
+		TextDim: "#898991", // role muted
+		Accent:  "#7d9fc7", // role accent
+		Purple:  "#9f7bc7", // role magenta
+		Cyan:    "#389bb4", // role cyan
+		Green:   "#7dba6f", // role good
+		Yellow:  "#ddbb70", // role yellow_bright
+		Orange:  "#e79187", // role red_bright
+		Red:     "#d4756b", // role warn
+		Comment: "#898991", // = TextDim
+		Glaze:   "#ca363a", // chrome only (bead); never text
+
+		TmuxWindowStyle: "default",
+		TmuxStatusBg:    "#1c1c24",
+		TmuxStatusFg:    "#d8d8e0",
+		TmuxHint:        "#898991",
+	},
+
+	// Kettle Cerise Light — glaze pack, light mode.
+	"kettle-cerise-light": {
+		Name:    "kettle-cerise-light",
+		Display: "Kettle Cerise Light",
+		Light:   true,
+
+		Bg:      "#dfe1e8", // role ground
+		Surface: "#e7e9ee", // role panel (ground +1 shade step)
+		Border:  "#bbbdc7", // role line
+		Text:    "#1a1a1e", // role ink
+		TextDim: "#5f5f64", // role muted
+		Accent:  "#1b4979", // role accent
+		Purple:  "#633f81", // role magenta
+		Cyan:    "#006071", // role cyan
+		Green:   "#00581f", // role good
+		Yellow:  "#7c5500", // role gold
+		Orange:  "#b23a26", // role red_bright
+		Red:     "#8e1904", // role warn
+		Comment: "#5f5f64", // = TextDim
+		Glaze:   "#ca363a", // chrome only (bead); never text
+
+		TmuxWindowStyle: "bg=#dfe1e8",
+		TmuxStatusBg:    "#e7e9ee",
+		TmuxStatusFg:    "#1a1a1e",
+		TmuxHint:        "#5f5f64",
+	},
+
+	// Kettle Nectar — glaze pack, dark. Source: design/palettes/library/kettle-glazes.json.
+	"kettle-nectar": {
+		Name:    "kettle-nectar",
+		Display: "Kettle Nectar",
+
+		Bg:      "#16161e", // role ground
+		Surface: "#1c1c24", // role panel (ground +1 shade step)
+		Border:  "#3f3f4c", // role line
+		Text:    "#d8d8e0", // role ink
+		TextDim: "#898991", // role muted
+		Accent:  "#7d9fc7", // role accent
+		Purple:  "#9f7bc7", // role magenta
+		Cyan:    "#389bb4", // role cyan
+		Green:   "#7dba6f", // role good
+		Yellow:  "#ddbb70", // role yellow_bright
+		Orange:  "#e79187", // role red_bright
+		Red:     "#d4756b", // role warn
+		Comment: "#898991", // = TextDim
+		Glaze:   "#f7a224", // chrome only (bead); never text
+
+		TmuxWindowStyle: "default",
+		TmuxStatusBg:    "#1c1c24",
+		TmuxStatusFg:    "#d8d8e0",
+		TmuxHint:        "#898991",
+	},
+
+	// Kettle Nectar Light — glaze pack, light mode.
+	"kettle-nectar-light": {
+		Name:    "kettle-nectar-light",
+		Display: "Kettle Nectar Light",
+		Light:   true,
+
+		Bg:      "#dfe1e8", // role ground
+		Surface: "#e7e9ee", // role panel (ground +1 shade step)
+		Border:  "#bbbdc7", // role line
+		Text:    "#1a1a1e", // role ink
+		TextDim: "#5f5f64", // role muted
+		Accent:  "#1b4979", // role accent
+		Purple:  "#633f81", // role magenta
+		Cyan:    "#006071", // role cyan
+		Green:   "#00581f", // role good
+		Yellow:  "#7c5500", // role gold
+		Orange:  "#b23a26", // role red_bright
+		Red:     "#8e1904", // role warn
+		Comment: "#5f5f64", // = TextDim
+		Glaze:   "#f7a224", // chrome only (bead); never text
+
+		TmuxWindowStyle: "bg=#dfe1e8",
+		TmuxStatusBg:    "#e7e9ee",
+		TmuxStatusFg:    "#1a1a1e",
+		TmuxHint:        "#5f5f64",
+	},
+
+	// Kettle Artichaut — glaze pack, dark. Source: design/palettes/library/kettle-glazes.json.
+	"kettle-artichaut": {
+		Name:    "kettle-artichaut",
+		Display: "Kettle Artichaut",
+
+		Bg:      "#16161e", // role ground
+		Surface: "#1c1c24", // role panel (ground +1 shade step)
+		Border:  "#3f3f4c", // role line
+		Text:    "#d8d8e0", // role ink
+		TextDim: "#898991", // role muted
+		Accent:  "#7d9fc7", // role accent
+		Purple:  "#9f7bc7", // role magenta
+		Cyan:    "#389bb4", // role cyan
+		Green:   "#7dba6f", // role good
+		Yellow:  "#ddbb70", // role yellow_bright
+		Orange:  "#e79187", // role red_bright
+		Red:     "#d4756b", // role warn
+		Comment: "#898991", // = TextDim
+		Glaze:   "#709841", // chrome only (bead); never text
+
+		TmuxWindowStyle: "default",
+		TmuxStatusBg:    "#1c1c24",
+		TmuxStatusFg:    "#d8d8e0",
+		TmuxHint:        "#898991",
+	},
+
+	// Kettle Artichaut Light — glaze pack, light mode.
+	"kettle-artichaut-light": {
+		Name:    "kettle-artichaut-light",
+		Display: "Kettle Artichaut Light",
+		Light:   true,
+
+		Bg:      "#dfe1e8", // role ground
+		Surface: "#e7e9ee", // role panel (ground +1 shade step)
+		Border:  "#bbbdc7", // role line
+		Text:    "#1a1a1e", // role ink
+		TextDim: "#5f5f64", // role muted
+		Accent:  "#1b4979", // role accent
+		Purple:  "#633f81", // role magenta
+		Cyan:    "#006071", // role cyan
+		Green:   "#00581f", // role good
+		Yellow:  "#7c5500", // role gold
+		Orange:  "#b23a26", // role red_bright
+		Red:     "#8e1904", // role warn
+		Comment: "#5f5f64", // = TextDim
+		Glaze:   "#709841", // chrome only (bead); never text
+
+		TmuxWindowStyle: "bg=#dfe1e8",
+		TmuxStatusBg:    "#e7e9ee",
+		TmuxStatusFg:    "#1a1a1e",
+		TmuxHint:        "#5f5f64",
 	},
 
 	// Kettle Marseille — glaze pack, dark. Source: design/palettes/library/kettle-glazes.json.
@@ -165,6 +326,7 @@ var palettes = map[string]Palette{
 		Orange:  "#e79187", // role red_bright
 		Red:     "#d4756b", // role warn
 		Comment: "#898991", // = TextDim
+		Glaze:   "#3899e2", // chrome only (bead); never text
 
 		TmuxWindowStyle: "default",
 		TmuxStatusBg:    "#1c1c24",
@@ -191,6 +353,7 @@ var palettes = map[string]Palette{
 		Orange:  "#b23a26", // role red_bright
 		Red:     "#8e1904", // role warn
 		Comment: "#5f5f64", // = TextDim
+		Glaze:   "#3899e2", // chrome only (bead); never text
 
 		TmuxWindowStyle: "bg=#dfe1e8",
 		TmuxStatusBg:    "#e7e9ee",
@@ -216,6 +379,7 @@ var palettes = map[string]Palette{
 		Orange:  "#e79187", // role red_bright
 		Red:     "#d4756b", // role warn
 		Comment: "#898991", // = TextDim
+		Glaze:   "#2a5cda", // chrome only (bead); never text
 
 		TmuxWindowStyle: "default",
 		TmuxStatusBg:    "#1c1c24",
@@ -242,6 +406,7 @@ var palettes = map[string]Palette{
 		Orange:  "#b23a26", // role red_bright
 		Red:     "#8e1904", // role warn
 		Comment: "#5f5f64", // = TextDim
+		Glaze:   "#2a5cda", // chrome only (bead); never text
 
 		TmuxWindowStyle: "bg=#dfe1e8",
 		TmuxStatusBg:    "#e7e9ee",
@@ -267,6 +432,7 @@ var palettes = map[string]Palette{
 		Orange:  "#e79187", // role red_bright
 		Red:     "#d4756b", // role warn
 		Comment: "#848a93", // = TextDim
+		Glaze:   "#5c7392", // chrome only (bead); never text
 
 		TmuxWindowStyle: "default",
 		TmuxStatusBg:    "#181d26",
@@ -293,6 +459,7 @@ var palettes = map[string]Palette{
 		Orange:  "#b23a26", // role red_bright
 		Red:     "#8e1904", // role warn
 		Comment: "#5c6065", // = TextDim
+		Glaze:   "#5c7392", // chrome only (bead); never text
 
 		TmuxWindowStyle: "bg=#dce2e9",
 		TmuxStatusBg:    "#e5eaef",
@@ -331,7 +498,7 @@ func IsHouse(name string) bool {
 // order is the display order of the house themes in the picker: the terminal
 // scheme avicenna actually runs first, then the product palette and its light
 // variant. Every key in palettes must appear here (asserted by the tests).
-var order = []string{"wildcherry", "kettle", "kettle-light", "kettle-marseille", "kettle-marseille-light", "kettle-cobalt", "kettle-cobalt-light", "kettle-graphite", "kettle-graphite-light"}
+var order = []string{"wildcherry", "kettle", "kettle-light", "kettle-cerise", "kettle-cerise-light", "kettle-nectar", "kettle-nectar-light", "kettle-artichaut", "kettle-artichaut-light", "kettle-marseille", "kettle-marseille-light", "kettle-cobalt", "kettle-cobalt-light", "kettle-graphite", "kettle-graphite-light"}
 
 // Names returns the house theme config values in display order.
 func Names() []string {
