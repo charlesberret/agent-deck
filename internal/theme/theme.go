@@ -152,7 +152,7 @@ var palettes = map[string]Palette{
 	// Kettle Cerise — glaze pack, dark. Source: design/palettes/library/kettle-glazes.json.
 	"kettle-cerise": {
 		Name:    "kettle-cerise",
-		Display: "Kettle Cerise",
+		Display: "Cerise",
 
 		Bg:      "#16161e", // role ground
 		Surface: "#1c1c24", // role panel (ground +1 shade step)
@@ -178,7 +178,7 @@ var palettes = map[string]Palette{
 	// Kettle Cerise Light — glaze pack, light mode.
 	"kettle-cerise-light": {
 		Name:    "kettle-cerise-light",
-		Display: "Kettle Cerise Light",
+		Display: "Cerise Light",
 		Light:   true,
 
 		Bg:      "#dfe1e8", // role ground
@@ -205,7 +205,7 @@ var palettes = map[string]Palette{
 	// Kettle Nectar — glaze pack, dark. Source: design/palettes/library/kettle-glazes.json.
 	"kettle-nectar": {
 		Name:    "kettle-nectar",
-		Display: "Kettle Nectar",
+		Display: "Nectar",
 
 		Bg:      "#16161e", // role ground
 		Surface: "#1c1c24", // role panel (ground +1 shade step)
@@ -231,7 +231,7 @@ var palettes = map[string]Palette{
 	// Kettle Nectar Light — glaze pack, light mode.
 	"kettle-nectar-light": {
 		Name:    "kettle-nectar-light",
-		Display: "Kettle Nectar Light",
+		Display: "Nectar Light",
 		Light:   true,
 
 		Bg:      "#dfe1e8", // role ground
@@ -258,7 +258,7 @@ var palettes = map[string]Palette{
 	// Kettle Artichaut — glaze pack, dark. Source: design/palettes/library/kettle-glazes.json.
 	"kettle-artichaut": {
 		Name:    "kettle-artichaut",
-		Display: "Kettle Artichaut",
+		Display: "Artichaut",
 
 		Bg:      "#16161e", // role ground
 		Surface: "#1c1c24", // role panel (ground +1 shade step)
@@ -284,7 +284,7 @@ var palettes = map[string]Palette{
 	// Kettle Artichaut Light — glaze pack, light mode.
 	"kettle-artichaut-light": {
 		Name:    "kettle-artichaut-light",
-		Display: "Kettle Artichaut Light",
+		Display: "Artichaut Light",
 		Light:   true,
 
 		Bg:      "#dfe1e8", // role ground
@@ -311,7 +311,7 @@ var palettes = map[string]Palette{
 	// Kettle Marseille — glaze pack, dark. Source: design/palettes/library/kettle-glazes.json.
 	"kettle-marseille": {
 		Name:    "kettle-marseille",
-		Display: "Kettle Marseille",
+		Display: "Marseille",
 
 		Bg:      "#16161e", // role ground
 		Surface: "#1c1c24", // role panel (ground +1 shade step)
@@ -337,7 +337,7 @@ var palettes = map[string]Palette{
 	// Kettle Marseille Light — glaze pack, light mode.
 	"kettle-marseille-light": {
 		Name:    "kettle-marseille-light",
-		Display: "Kettle Marseille Light",
+		Display: "Marseille Light",
 		Light:   true,
 
 		Bg:      "#dfe1e8", // role ground
@@ -364,7 +364,7 @@ var palettes = map[string]Palette{
 	// Kettle Cobalt — glaze pack, dark. Source: design/palettes/library/kettle-glazes.json.
 	"kettle-cobalt": {
 		Name:    "kettle-cobalt",
-		Display: "Kettle Cobalt",
+		Display: "Cobalt",
 
 		Bg:      "#16161e", // role ground
 		Surface: "#1c1c24", // role panel (ground +1 shade step)
@@ -390,7 +390,7 @@ var palettes = map[string]Palette{
 	// Kettle Cobalt Light — glaze pack, light mode.
 	"kettle-cobalt-light": {
 		Name:    "kettle-cobalt-light",
-		Display: "Kettle Cobalt Light",
+		Display: "Cobalt Light",
 		Light:   true,
 
 		Bg:      "#dfe1e8", // role ground
@@ -417,7 +417,7 @@ var palettes = map[string]Palette{
 	// Kettle Graphite — glaze pack, dark. Source: design/palettes/library/kettle-glazes.json.
 	"kettle-graphite": {
 		Name:    "kettle-graphite",
-		Display: "Kettle Graphite",
+		Display: "Graphite",
 
 		Bg:      "#121720", // role ground
 		Surface: "#181d26", // role panel (ground +1 shade step)
@@ -443,7 +443,7 @@ var palettes = map[string]Palette{
 	// Kettle Graphite Light — glaze pack, light mode.
 	"kettle-graphite-light": {
 		Name:    "kettle-graphite-light",
-		Display: "Kettle Graphite Light",
+		Display: "Graphite Light",
 		Light:   true,
 
 		Bg:      "#dce2e9", // role ground
