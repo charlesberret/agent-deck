@@ -528,6 +528,14 @@ func initStyles() {
 	// body-voiced enamel may fill it without colliding with a status signal.
 	// The row's text and background stay on Accent/Surface (see
 	// SessionTitleSelStyle above); only this bead carries the glaze.
+	//
+	// Why the bead is unambiguous here: on the selected row
+	// SessionStatusSelStyle flattens the status glyph to Bg-on-Accent, so the
+	// live red/amber/green status hues are gone from that row entirely — a
+	// body-voiced enamel sits beside no signal it could be mistaken for. If
+	// someone restores status colour on the selected row, that safety goes
+	// with it and the glaze becomes ambiguous; move the enamel or keep the
+	// status flattened, but do not have both.
 	SessionSelectionPrefix = lipgloss.NewStyle().Foreground(ColorGlaze).Bold(true)
 
 	// Group item styles

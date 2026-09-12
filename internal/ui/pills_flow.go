@@ -26,10 +26,6 @@ func joinPillsFlow(pills []string, maxWidth int) string {
 	var rows []string
 	var row []string
 	rowW := 0
-	// The first row is written after the caller's own "  "; continuation
-	// rows get that indent from us (below), so they must pack two cells
-	// narrower or they overflow the dialog by exactly the indent.
-	limit := maxWidth
 
 	for _, p := range pills {
 		if p == "" {
@@ -38,11 +34,10 @@ func joinPillsFlow(pills []string, maxWidth int) string {
 		pw := lipgloss.Width(p)
 		// If a single pill is wider than the budget, still emit it alone
 		// (better one long pill than infinite empty rows).
-		if len(row) > 0 && rowW+pw > limit {
+		if len(row) > 0 && rowW+pw > maxWidth {
 			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Left, row...))
 			row = []string{p}
 			rowW = pw
-			limit = maxWidth - 2
 			continue
 		}
 		row = append(row, p)
@@ -64,13 +59,25 @@ func joinPillsFlow(pills []string, maxWidth int) string {
 	return b.String()
 }
 
-// pillsInnerWidth is the usable cell budget for tool pills inside a dialog
-// with Padding(2, 4) and a leading "  " content indent.
+// pillsInnerWidth is the usable cell budget for one row of pills inside a
+// dialog with Padding(2, 4) and a leading "  " content indent.
+//
+// The indent is budgeted once, here, for every row. The border sits outside
+// Width, Padding(2,4) eats 8 columns of content, and the caller's leading "  "
+// before the first row eats 2 more — which joinPillsFlow then reproduces on
+// every continuation row, so all rows are offset by the same 2. Budget is
+// therefore dialogWidth - 10, and joinPillsFlow can compare every row against
+// it uniformly rather than juggling a first-row exception.
+//
+// Caveat at the settings panel: SettingsPanel.View renders its dialog with
+// Padding(1, 2), not Padding(2, 4) (settings_panel.go, dialogStyle). Its real
+// content width is dialogWidth-4, so the radio rows there sit 4 cells inside
+// this budget. That slack is harmless — the rows fit — but it means this
+// function under-uses the settings dialog rather than describing it. If a
+// second consumer with a third padding appears, give this an explicit padding
+// parameter instead of widening the caveat.
 func pillsInnerWidth(dialogWidth int) int {
-	// border is outside Width; Padding(2,4) consumes 8 cols of content.
-	// Leading "  " before the pill row is another 2, but joinPillsFlow's
-	// first row is written after that indent — so budget = dialogWidth - 8.
-	w := dialogWidth - 8
+	w := dialogWidth - 10
 	if w < 20 {
 		w = 20
 	}
@@ -92,11 +99,9 @@ func radioGroupFlow(options []string, selected, maxWidth int) string {
 		}
 		entries = append(entries, style.Render(marker+opt)+"  ")
 	}
-	// Continuation rows are re-indented to match the caller's leading "  ";
-	// joinPillsFlow only knows about the first row's offset, so it must pack
-	// against a budget two columns narrower or every wrapped row overflows
-	// the dialog by exactly that indent (seen once the theme list grew past
-	// three rows).
-	const contIndent = "  "
-	return strings.ReplaceAll(joinPillsFlow(entries, maxWidth-len(contIndent)), "\n", "\n"+contIndent)
+	// No re-indent here: joinPillsFlow already prefixes continuation rows with
+	// the same two spaces the caller puts before the first row, and
+	// pillsInnerWidth has already paid for them. Re-indenting on top of that
+	// produced a 4-space continuation under a 2-space first row.
+	return joinPillsFlow(entries, maxWidth)
 }

@@ -37,8 +37,8 @@ func withTrueColorProfile(t *testing.T) {
 }
 
 // TestHousePalettesPopulateColorGlaze pins the fallback wiring: every house
-// palette must land a usable glaze in the global, whether it declares one or
-// (as the generated kettle block does today) leaves it unset.
+// palette must land a usable glaze in the global, whether it declares one (all
+// of them do today) or the generator omits it for a pack with no enamel.
 func TestHousePalettesPopulateColorGlaze(t *testing.T) {
 	defer InitTheme("dark")
 
@@ -68,9 +68,12 @@ func TestBuiltInThemesFallBackToAccentGlaze(t *testing.T) {
 	}
 }
 
-// TestSelectedRowBeadCarriesTheGlaze is the load-bearing pin. No shipped
-// palette declares a glaze distinct from its accent yet (the generator will
-// emit one), so the test installs a distinct glaze itself and proves that:
+// TestSelectedRowBeadCarriesTheGlaze is the load-bearing pin. It installs a
+// glaze of its own rather than trusting a shipped palette, for two reasons:
+// the assertion then runs against a known colour instead of whatever the
+// generator last emitted, and a pack whose glaze happens to equal its accent
+// would make the test vacuous — it could not tell ColorGlaze from ColorAccent.
+// Under a distinct glaze it proves:
 //
 //  1. the selected row's leading bead is drawn in the glaze, and
 //  2. nothing else on the row is — the title keeps its accent-backed shade.
@@ -84,7 +87,8 @@ func TestSelectedRowBeadCarriesTheGlaze(t *testing.T) {
 	defer InitTheme("dark")
 
 	// Artichaut-like green: a body-voiced enamel, deliberately unlike any
-	// colour kettle already uses, so the escape below is unambiguous. The
+	// colour kettle already uses, so the escape below can only have come from
+	// ColorGlaze and not from the accent or a status style. The
 	// expected escape is taken from lipgloss itself rather than hand-written,
 	// because the colour profile rounds channels on its way to ANSI.
 	themeMu.Lock()

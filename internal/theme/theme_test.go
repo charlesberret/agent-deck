@@ -27,13 +27,14 @@ func TestPalettesAreWellFormed(t *testing.T) {
 				t.Errorf("%s.%s = %q, want lowercase #rrggbb", p.Name, role, hex)
 			}
 		}
-		// Glaze is deliberately NOT in the map above: it is optional. The
-		// generated kettle block does not emit it yet, and an unset Glaze
-		// means "use Accent", not "broken palette". The invariant that stays
-		// meaningful is two-part — a declared Glaze must be a real colour, and
-		// GlazeColor() must resolve to one for EVERY palette, declared or not.
-		// That catches both a typo'd enamel and a fallback that would hand
-		// lipgloss an empty string.
+		// Glaze is deliberately NOT in the map above: it is optional. Every
+		// palette declares one today, but the kettle block is generated and a
+		// future run may omit it for a pack with no enamel — and an omission
+		// means "wear the Accent", not "broken palette". The invariant that
+		// survives either way is two-part: a declared Glaze must be a real
+		// colour, and GlazeColor() must resolve to one for EVERY palette,
+		// declared or not. That catches both a typo'd enamel and a fallback
+		// that would hand lipgloss an empty string.
 		if p.Glaze != "" && !hexRE.MatchString(p.Glaze) {
 			t.Errorf("%s.Glaze = %q, want lowercase #rrggbb or empty (= use Accent)", p.Name, p.Glaze)
 		}

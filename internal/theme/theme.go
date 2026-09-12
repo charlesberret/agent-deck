@@ -48,8 +48,9 @@ type Palette struct {
 	// per the design law: "the enamel fills a field only where the field is
 	// transient or small (cursor, bead, dot); a persistent field is a shade."
 	//
-	// Empty means "unset — use Accent". Read it through GlazeColor(), never
-	// directly, so the fallback is never skipped. There is deliberately no
+	// Empty means "unset — wear the Accent". Read it through GlazeColor(),
+	// never directly, so the fallback is never skipped for a pack the
+	// generator emits without an enamel. There is deliberately no
 	// OnGlaze: nothing in the deck draws text on the glaze, because the glaze
 	// never becomes a background.
 	Glaze string
@@ -473,8 +474,10 @@ var palettes = map[string]Palette{
 // back to Accent when the palette does not declare one. Always non-empty for a
 // well-formed palette, so callers can hand it straight to lipgloss.
 //
-// Call this rather than reading Glaze: the generated kettle block does not yet
-// emit a Glaze field, so most packs are legitimately unset today.
+// Call this rather than reading Glaze. Every registered palette declares one
+// today, but the kettle block is generated: a future run of kettle-promote.py
+// may omit the field for a pack that has no enamel of its own, and the correct
+// reading of an omission is "wear the Accent", not "wear nothing".
 func (p Palette) GlazeColor() string {
 	if p.Glaze == "" {
 		return p.Accent

@@ -81,14 +81,33 @@ func TestThemeNoteSurfacesWIPPalettes(t *testing.T) {
 }
 
 func TestThemeRowFitsSettingsDialog(t *testing.T) {
-	// The settings dialog renders at width 64; anything wider than the inner
-	// budget has to wrap between options rather than spill.
-	const dialogWidth = 64
-	budget := pillsInnerWidth(dialogWidth)
-	row := radioGroupFlow(themeNames, 0, budget)
+	// The real constraint is not the pill budget — it is the settings dialog's
+	// content width. SettingsPanel.View renders at dialogWidth 64 with
+	// Padding(1, 2) (border sits outside Width), so content is dialogWidth-4
+	// cells. Every rendered row is written after a two-space indent, first row
+	// from the caller and continuation rows from joinPillsFlow, so the thing
+	// that must fit is 2 + width(line).
+	const (
+		dialogWidth      = 64
+		settingsHorizPad = 2 // dialogStyle: Padding(1, 2)
+		indent           = 2 // content.WriteString("  " + themeRow)
+	)
+	contentWidth := dialogWidth - 2*settingsHorizPad
+
+	row := radioGroupFlow(themeNames, 0, pillsInnerWidth(dialogWidth))
 	for i, line := range strings.Split(row, "\n") {
-		if w := lipgloss.Width(line); w > budget {
-			t.Errorf("theme row line %d is %d cols, budget %d: %q", i, w, budget, line)
+		if w := indent + lipgloss.Width(line); w > contentWidth {
+			t.Errorf("theme row line %d occupies %d cols (indent %d + %d), settings content width is %d: %q",
+				i, w, indent, lipgloss.Width(line), contentWidth, line)
 		}
+	}
+
+	// And the budget itself must leave room for the indent it promises to pay
+	// for: an off-by-two in pillsInnerWidth shows up here even though the
+	// settings panel's lighter padding would otherwise absorb it.
+	const pillsHorizPad = 4 // pillsInnerWidth documents Padding(2, 4)
+	if got, want := pillsInnerWidth(dialogWidth), dialogWidth-2*pillsHorizPad-indent; got != want {
+		t.Errorf("pillsInnerWidth(%d) = %d, want %d (content %d less the %d-cell indent every row carries)",
+			dialogWidth, got, want, dialogWidth-2*pillsHorizPad, indent)
 	}
 }

@@ -914,6 +914,12 @@ func (s *SettingsPanel) View() string {
 		content.WriteString(warningStyle.Render(" (restart required)"))
 	}
 	content.WriteString("\n")
+	// pillsInnerWidth budgets for a Padding(2,4) dialog plus the "  " indent
+	// below; this panel renders at Padding(1,2) (see dialogStyle in View), so
+	// its real content width is dialogWidth-4 and these rows sit 4 cells
+	// inside the budget. Deliberate slack, not an accident — widening them to
+	// the true content width would reflow the radio block and the hardcoded
+	// cursor-to-line map above does not yet derive its row count from it.
 	themeRow := radioGroupFlow(themeNames, s.selectedTheme, pillsInnerWidth(dialogWidth))
 	if s.cursor == int(SettingTheme) {
 		themeRow = highlightStyle.Render(themeRow)
