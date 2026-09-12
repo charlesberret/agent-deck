@@ -27,6 +27,19 @@ func TestPalettesAreWellFormed(t *testing.T) {
 				t.Errorf("%s.%s = %q, want lowercase #rrggbb", p.Name, role, hex)
 			}
 		}
+		// Glaze is deliberately NOT in the map above: it is optional. The
+		// generated kettle block does not emit it yet, and an unset Glaze
+		// means "use Accent", not "broken palette". The invariant that stays
+		// meaningful is two-part — a declared Glaze must be a real colour, and
+		// GlazeColor() must resolve to one for EVERY palette, declared or not.
+		// That catches both a typo'd enamel and a fallback that would hand
+		// lipgloss an empty string.
+		if p.Glaze != "" && !hexRE.MatchString(p.Glaze) {
+			t.Errorf("%s.Glaze = %q, want lowercase #rrggbb or empty (= use Accent)", p.Name, p.Glaze)
+		}
+		if !hexRE.MatchString(p.GlazeColor()) {
+			t.Errorf("%s.GlazeColor() = %q, want lowercase #rrggbb", p.Name, p.GlazeColor())
+		}
 		// Surface must be distinguishable from Bg: agent-deck paints Surface
 		// as a real background (title bars, selected rows, preview pane).
 		if p.Surface == p.Bg {
@@ -47,6 +60,17 @@ func TestPalettesAreWellFormed(t *testing.T) {
 		if !p.WIP && p.Note != "" {
 			t.Errorf("%s: Note set on a non-WIP palette (%q)", p.Name, p.Note)
 		}
+	}
+}
+
+func TestGlazeFallsBackToAccent(t *testing.T) {
+	unset := Palette{Accent: "#112233"}
+	if got := unset.GlazeColor(); got != "#112233" {
+		t.Errorf("unset Glaze: GlazeColor() = %q, want the Accent %q", got, "#112233")
+	}
+	set := Palette{Accent: "#112233", Glaze: "#d93f85"}
+	if got := set.GlazeColor(); got != "#d93f85" {
+		t.Errorf("declared Glaze: GlazeColor() = %q, want %q", got, "#d93f85")
 	}
 }
 

@@ -39,6 +39,21 @@ type Palette struct {
 	Red     string
 	Comment string
 
+	// Glaze is the pack's enamel: the colour that makes a Kettle glaze pack
+	// recognisably itself. It is CHROME ONLY — never text. A body-voiced glaze
+	// (Cerise cherry, Nectar amber, Artichaut green) sits on a hue that
+	// collides with a status signal (red / yellow / green), so painting words
+	// with it would make ordinary titles read as alarms. The deck spends it on
+	// transient or one-cell fields only — currently just the selection bead —
+	// per the design law: "the enamel fills a field only where the field is
+	// transient or small (cursor, bead, dot); a persistent field is a shade."
+	//
+	// Empty means "unset — use Accent". Read it through GlazeColor(), never
+	// directly, so the fallback is never skipped. There is deliberately no
+	// OnGlaze: nothing in the deck draws text on the glaze, because the glaze
+	// never becomes a background.
+	Glaze string
+
 	// TmuxWindowStyle is the tmux window-style value. "default" lets the
 	// terminal's own background (and any transparency or blur it applies)
 	// show through the pane; an explicit "bg=#rrggbb" paints over it.
@@ -72,6 +87,7 @@ var palettes = map[string]Palette{
 		Orange:  "#eac066", // palette 11
 		Red:     "#ff919d", // palette 14 — brightest red-family, reads as alarm
 		Comment: "#85939d", // = TextDim
+		Glaze:   "#d93f85", // = Accent: wildcherry has no separate enamel
 
 		TmuxWindowStyle: "default", // keep Ghostty's opacity/blur intact
 		TmuxStatusBg:    "#2c2433",
@@ -284,6 +300,19 @@ var palettes = map[string]Palette{
 		TmuxHint:        "#5c6065",
 	},
 	// <<< kettle family
+}
+
+// GlazeColor returns the chrome-only enamel colour for this palette, falling
+// back to Accent when the palette does not declare one. Always non-empty for a
+// well-formed palette, so callers can hand it straight to lipgloss.
+//
+// Call this rather than reading Glaze: the generated kettle block does not yet
+// emit a Glaze field, so most packs are legitimately unset today.
+func (p Palette) GlazeColor() string {
+	if p.Glaze == "" {
+		return p.Accent
+	}
+	return p.Glaze
 }
 
 // Get returns the house palette registered under name.

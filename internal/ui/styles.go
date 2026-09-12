@@ -78,6 +78,11 @@ var (
 	ColorOrange  lipgloss.Color
 	ColorRed     lipgloss.Color
 	ColorComment lipgloss.Color
+	// ColorGlaze is the palette's chrome-only enamel (theme.Palette.Glaze).
+	// Chrome only — never a text colour, never a background: a body-voiced
+	// glaze shares a hue with a status signal. Falls back to ColorAccent for
+	// palettes (and the built-in dark/light schemes) that declare no glaze.
+	ColorGlaze lipgloss.Color
 )
 
 // themeMu protects global color/style variables during live theme switches.
@@ -111,6 +116,7 @@ func InitTheme(name string) {
 		ColorOrange = lightColors.Orange
 		ColorRed = lightColors.Red
 		ColorComment = lightColors.Comment
+		ColorGlaze = lightColors.Accent // built-ins have no separate enamel
 	} else {
 		currentTheme = ThemeDark
 		ColorBg = darkColors.Bg
@@ -126,6 +132,7 @@ func InitTheme(name string) {
 		ColorOrange = darkColors.Orange
 		ColorRed = darkColors.Red
 		ColorComment = darkColors.Comment
+		ColorGlaze = darkColors.Accent // built-ins have no separate enamel
 	}
 	// Reinitialize styles with new colors
 	initStyles()
@@ -516,8 +523,12 @@ func initStyles() {
 	// Selection still uses bold so the cursor row is obvious against neighbors.
 	SessionTitleSelStyle = lipgloss.NewStyle().Bold(true).Foreground(ColorBg).Background(ColorAccent)
 
-	// Selection indicator
-	SessionSelectionPrefix = lipgloss.NewStyle().Foreground(ColorAccent).Bold(true)
+	// Selection indicator — the one place the chrome-only glaze is spent.
+	// A single leading cell on the cursor row: transient and small, so a
+	// body-voiced enamel may fill it without colliding with a status signal.
+	// The row's text and background stay on Accent/Surface (see
+	// SessionTitleSelStyle above); only this bead carries the glaze.
+	SessionSelectionPrefix = lipgloss.NewStyle().Foreground(ColorGlaze).Bold(true)
 
 	// Group item styles
 	GroupExpandStyle = lipgloss.NewStyle().Foreground(ColorText)

@@ -22,6 +22,8 @@ func applyHousePalette(p theme.Palette) {
 	ColorOrange = lipgloss.Color(p.Orange)
 	ColorRed = lipgloss.Color(p.Red)
 	ColorComment = lipgloss.Color(p.Comment)
+	// GlazeColor(), not Glaze: a pack that declares no enamel inherits Accent.
+	ColorGlaze = lipgloss.Color(p.GlazeColor())
 }
 
 // ThemeIsLight reports whether the active theme has a light background.
