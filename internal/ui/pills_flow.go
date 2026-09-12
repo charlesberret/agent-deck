@@ -26,6 +26,10 @@ func joinPillsFlow(pills []string, maxWidth int) string {
 	var rows []string
 	var row []string
 	rowW := 0
+	// The first row is written after the caller's own "  "; continuation
+	// rows get that indent from us (below), so they must pack two cells
+	// narrower or they overflow the dialog by exactly the indent.
+	limit := maxWidth
 
 	for _, p := range pills {
 		if p == "" {
@@ -34,10 +38,11 @@ func joinPillsFlow(pills []string, maxWidth int) string {
 		pw := lipgloss.Width(p)
 		// If a single pill is wider than the budget, still emit it alone
 		// (better one long pill than infinite empty rows).
-		if len(row) > 0 && rowW+pw > maxWidth {
+		if len(row) > 0 && rowW+pw > limit {
 			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Left, row...))
 			row = []string{p}
 			rowW = pw
+			limit = maxWidth - 2
 			continue
 		}
 		row = append(row, p)
@@ -88,6 +93,10 @@ func radioGroupFlow(options []string, selected, maxWidth int) string {
 		entries = append(entries, style.Render(marker+opt)+"  ")
 	}
 	// Continuation rows are re-indented to match the caller's leading "  ";
-	// joinPillsFlow only knows about the first row's offset.
-	return strings.ReplaceAll(joinPillsFlow(entries, maxWidth), "\n", "\n  ")
+	// joinPillsFlow only knows about the first row's offset, so it must pack
+	// against a budget two columns narrower or every wrapped row overflows
+	// the dialog by exactly that indent (seen once the theme list grew past
+	// three rows).
+	const contIndent = "  "
+	return strings.ReplaceAll(joinPillsFlow(entries, maxWidth-len(contIndent)), "\n", "\n"+contIndent)
 }
