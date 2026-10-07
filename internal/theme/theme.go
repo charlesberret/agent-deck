@@ -102,8 +102,8 @@ var palettes = map[string]Palette{
 		Name:    "kettle",
 		Display: "Kettle",
 
-		Bg:      "#16161e", // role ground
-		Surface: "#1c1c24", // role panel (ground +1 shade step)
+		Bg:      "#080e1a", // role ground
+		Surface: "#0d1420", // role panel (ground +1 shade step)
 		Border:  "#3f3f4e", // role line
 		Text:    "#d8d8e0", // role ink
 		TextDim: "#8a8a92", // role muted
@@ -118,7 +118,7 @@ var palettes = map[string]Palette{
 		Glaze:   "#c8a24a", // chrome only (bead); never text
 
 		TmuxWindowStyle: "default",
-		TmuxStatusBg:    "#1c1c24",
+		TmuxStatusBg:    "#0d1420",
 		TmuxStatusFg:    "#d8d8e0",
 		TmuxHint:        "#8a8a92",
 	},
@@ -155,11 +155,11 @@ var palettes = map[string]Palette{
 		Name:    "kettle-cerise",
 		Display: "Cerise",
 
-		Bg:      "#16161e", // role ground
-		Surface: "#1c1c24", // role panel (ground +1 shade step)
+		Bg:      "#080e1a", // role ground
+		Surface: "#0d1420", // role panel (ground +1 shade step)
 		Border:  "#3f3f4c", // role line
 		Text:    "#d8d8e0", // role ink
-		TextDim: "#898991", // role muted
+		TextDim: "#81818a", // role muted
 		Accent:  "#7d9fc7", // role accent
 		Purple:  "#9f7bc7", // role magenta
 		Cyan:    "#389bb4", // role cyan
@@ -167,13 +167,13 @@ var palettes = map[string]Palette{
 		Yellow:  "#ddbb70", // role yellow_bright
 		Orange:  "#e79187", // role red_bright
 		Red:     "#d4756b", // role warn
-		Comment: "#898991", // = TextDim
+		Comment: "#81818a", // = TextDim
 		Glaze:   "#ca363a", // chrome only (bead); never text
 
 		TmuxWindowStyle: "default",
-		TmuxStatusBg:    "#1c1c24",
+		TmuxStatusBg:    "#0d1420",
 		TmuxStatusFg:    "#d8d8e0",
-		TmuxHint:        "#898991",
+		TmuxHint:        "#81818a",
 	},
 
 	// Kettle Cerise Light — glaze pack, light mode.
@@ -208,11 +208,11 @@ var palettes = map[string]Palette{
 		Name:    "kettle-nectar",
 		Display: "Nectar",
 
-		Bg:      "#16161e", // role ground
-		Surface: "#1c1c24", // role panel (ground +1 shade step)
+		Bg:      "#080e1a", // role ground
+		Surface: "#0d1420", // role panel (ground +1 shade step)
 		Border:  "#3f3f4c", // role line
 		Text:    "#d8d8e0", // role ink
-		TextDim: "#898991", // role muted
+		TextDim: "#81818a", // role muted
 		Accent:  "#7d9fc7", // role accent
 		Purple:  "#9f7bc7", // role magenta
 		Cyan:    "#389bb4", // role cyan
@@ -220,13 +220,13 @@ var palettes = map[string]Palette{
 		Yellow:  "#ddbb70", // role yellow_bright
 		Orange:  "#e79187", // role red_bright
 		Red:     "#d4756b", // role warn
-		Comment: "#898991", // = TextDim
+		Comment: "#81818a", // = TextDim
 		Glaze:   "#f7a224", // chrome only (bead); never text
 
 		TmuxWindowStyle: "default",
-		TmuxStatusBg:    "#1c1c24",
+		TmuxStatusBg:    "#0d1420",
 		TmuxStatusFg:    "#d8d8e0",
-		TmuxHint:        "#898991",
+		TmuxHint:        "#81818a",
 	},
 
 	// Kettle Nectar Light — glaze pack, light mode.
@@ -261,11 +261,11 @@ var palettes = map[string]Palette{
 		Name:    "kettle-artichaut",
 		Display: "Artichaut",
 
-		Bg:      "#16161e", // role ground
-		Surface: "#1c1c24", // role panel (ground +1 shade step)
+		Bg:      "#080e1a", // role ground
+		Surface: "#0d1420", // role panel (ground +1 shade step)
 		Border:  "#3f3f4c", // role line
 		Text:    "#d8d8e0", // role ink
-		TextDim: "#898991", // role muted
+		TextDim: "#81818a", // role muted
 		Accent:  "#7d9fc7", // role accent
 		Purple:  "#9f7bc7", // role magenta
 		Cyan:    "#389bb4", // role cyan
@@ -273,13 +273,13 @@ var palettes = map[string]Palette{
 		Yellow:  "#ddbb70", // role yellow_bright
 		Orange:  "#e79187", // role red_bright
 		Red:     "#d4756b", // role warn
-		Comment: "#898991", // = TextDim
+		Comment: "#81818a", // = TextDim
 		Glaze:   "#709841", // chrome only (bead); never text
 
 		TmuxWindowStyle: "default",
-		TmuxStatusBg:    "#1c1c24",
+		TmuxStatusBg:    "#0d1420",
 		TmuxStatusFg:    "#d8d8e0",
-		TmuxHint:        "#898991",
+		TmuxHint:        "#81818a",
 	},
 
 	// Kettle Artichaut Light — glaze pack, light mode.
@@ -314,25 +314,25 @@ var palettes = map[string]Palette{
 		Name:    "kettle-marseille",
 		Display: "Marseille",
 
-		Bg:      "#16161e", // role ground
-		Surface: "#1c1c24", // role panel (ground +1 shade step)
+		Bg:      "#080e1a", // role ground
+		Surface: "#0d1420", // role panel (ground +1 shade step)
 		Border:  "#3f3f4c", // role line
 		Text:    "#d8d8e0", // role ink
-		TextDim: "#898991", // role muted
-		Accent:  "#2b8fd7", // role accent
+		TextDim: "#81818a", // role muted
+		Accent:  "#288dd4", // role accent
 		Purple:  "#9f7bc7", // role magenta
 		Cyan:    "#389bb4", // role cyan
 		Green:   "#7dba6f", // role good
 		Yellow:  "#ddbb70", // role yellow_bright
 		Orange:  "#e79187", // role red_bright
 		Red:     "#d4756b", // role warn
-		Comment: "#898991", // = TextDim
+		Comment: "#81818a", // = TextDim
 		Glaze:   "#3899e2", // chrome only (bead); never text
 
 		TmuxWindowStyle: "default",
-		TmuxStatusBg:    "#1c1c24",
+		TmuxStatusBg:    "#0d1420",
 		TmuxStatusFg:    "#d8d8e0",
-		TmuxHint:        "#898991",
+		TmuxHint:        "#81818a",
 	},
 
 	// Kettle Marseille Light — glaze pack, light mode.
@@ -367,25 +367,25 @@ var palettes = map[string]Palette{
 		Name:    "kettle-cobalt",
 		Display: "Cobalt",
 
-		Bg:      "#16161e", // role ground
-		Surface: "#1c1c24", // role panel (ground +1 shade step)
+		Bg:      "#080e1a", // role ground
+		Surface: "#0d1420", // role panel (ground +1 shade step)
 		Border:  "#3f3f4c", // role line
 		Text:    "#d8d8e0", // role ink
-		TextDim: "#898991", // role muted
-		Accent:  "#4d83ff", // role accent
+		TextDim: "#81818a", // role muted
+		Accent:  "#457cfd", // role accent
 		Purple:  "#9f7bc7", // role magenta
 		Cyan:    "#389bb4", // role cyan
 		Green:   "#7dba6f", // role good
 		Yellow:  "#ddbb70", // role yellow_bright
 		Orange:  "#e79187", // role red_bright
 		Red:     "#d4756b", // role warn
-		Comment: "#898991", // = TextDim
+		Comment: "#81818a", // = TextDim
 		Glaze:   "#2a5cda", // chrome only (bead); never text
 
 		TmuxWindowStyle: "default",
-		TmuxStatusBg:    "#1c1c24",
+		TmuxStatusBg:    "#0d1420",
 		TmuxStatusFg:    "#d8d8e0",
-		TmuxHint:        "#898991",
+		TmuxHint:        "#81818a",
 	},
 
 	// Kettle Cobalt Light — glaze pack, light mode.
@@ -420,25 +420,25 @@ var palettes = map[string]Palette{
 		Name:    "kettle-graphite",
 		Display: "Graphite",
 
-		Bg:      "#121720", // role ground
-		Surface: "#181d26", // role panel (ground +1 shade step)
+		Bg:      "#080e1a", // role ground
+		Surface: "#0d1420", // role panel (ground +1 shade step)
 		Border:  "#384150", // role line
 		Text:    "#d4d9e3", // role ink
-		TextDim: "#848a93", // role muted
-		Accent:  "#748bab", // role accent
+		TextDim: "#7c828b", // role muted
+		Accent:  "#7188a7", // role accent
 		Purple:  "#9f7bc7", // role magenta
 		Cyan:    "#389bb4", // role cyan
 		Green:   "#7dba6f", // role good
 		Yellow:  "#ddbb70", // role yellow_bright
 		Orange:  "#e79187", // role red_bright
 		Red:     "#d4756b", // role warn
-		Comment: "#848a93", // = TextDim
+		Comment: "#7c828b", // = TextDim
 		Glaze:   "#5c7392", // chrome only (bead); never text
 
 		TmuxWindowStyle: "default",
-		TmuxStatusBg:    "#181d26",
+		TmuxStatusBg:    "#0d1420",
 		TmuxStatusFg:    "#d4d9e3",
-		TmuxHint:        "#848a93",
+		TmuxHint:        "#7c828b",
 	},
 
 	// Kettle Graphite Light — glaze pack, light mode.
